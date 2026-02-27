@@ -11,7 +11,7 @@ def evaluate_best_model(self):
         print("🎯 Évaluation du meilleur modèle MLP...")
         
         # Création du meilleur modèle
-        best_model, batch_size = create_mlp_model(self, self.best_individual[0],self.best_individual[1:6], self.best_individual[6] ,self.best_individual[7],self.best_individual[8] ,self.best_individual[9])
+        best_model = create_mlp_model(self, self.best_individual[0],self.best_individual[1:6], self.best_individual[6] ,self.best_individual[7],self.best_individual[8] ,self.best_individual[9])
         
         # Callbacks
         early_stopping = EarlyStopping(
@@ -20,7 +20,8 @@ def evaluate_best_model(self):
             restore_best_weights=True,
             verbose=1
         )
-        
+        batch_sizes = [16, 32, 64, 128]
+        batch_size  = batch_sizes[self.best_individual[10]]
         # Entraînement complet
         history = best_model.fit(
             self.X_train, self.y_train,
