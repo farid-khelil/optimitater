@@ -22,7 +22,7 @@ def get_cnn_param():
 
     return param
 
-def create_cnn_model(obj, n_conv_layers=2, conv_filters=[32, 64], kernel_sizes=[3, 3], pool_sizes=[2, 2], n_dense_layers=1, dense_units=[64], dropout_rate=0.2, learning_rate=0.001, optimizer_idx=0, activation_idx=0):
+def create_cnn_model(obj, n_conv_layers=2, conv_filters=[32, 64], kernel_sizes=[3, 3], pool_sizes=[2, 2], n_dense_layers=1, dense_units=[64], dropout_rate=0.2, learning_rate=0.001, optimizer_idx=0, activation='relu'):
         """
         Création du modèle CNN avec gestion dynamique des couches
         et nouveaux hyperparamètres
@@ -38,11 +38,7 @@ def create_cnn_model(obj, n_conv_layers=2, conv_filters=[32, 64], kernel_sizes=[
         # learning_rate = individual[14]   # Taux d'apprentissage
         # optimizer_idx = individual[15]   # Index de l'optimiseur
         # activation_idx = individual[16]  # Index de la fonction d'activation (nouveau)
-        # batch_size_idx = individual[17]  # Index du batch size (nouveau)
-        
-        # Mappage des index aux valeurs réelles
-        activations = ['relu', 'elu', 'selu', 'tanh']
-        activation = activations[activation_idx]
+        # batch_size_idx = individual[17]  # Index du batch size (nouveau)# Mappage des index aux valeurs réelles
         
         model = Sequential()
         
@@ -54,14 +50,16 @@ def create_cnn_model(obj, n_conv_layers=2, conv_filters=[32, 64], kernel_sizes=[
                     filters=conv_filters[i],
                     kernel_size=kernel_sizes[i],
                     activation=activation,
-                    input_shape=(obj.n_features, 1)
+                    input_shape=(obj.n_features, 1),
+                    padding='same'
                 ))
             # Couches suivantes
             else:
                 model.add(Conv1D(
                     filters=conv_filters[i],
                     kernel_size=kernel_sizes[i],
-                    activation=activation
+                    activation=activation,
+                    padding='same'
                 ))
             
             model.add(BatchNormalization())

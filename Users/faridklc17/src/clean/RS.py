@@ -15,9 +15,6 @@ def randomized_search_optimization(obj, testing_model='DNN'):
     # verbose=0 suppresses Keras per-epoch training messages
         model = KerasClassifier(model=create_lstm_model, obj=obj, verbose=0)
         param_grid = get_lstm_param()
-        obj.X_train = obj.X_train.reshape(obj.X_train.shape[0], 1, obj.X_train.shape[1])
-        obj.X_val = obj.X_val.reshape(obj.X_val.shape[0], 1, obj.X_val.shape[1])
-        obj.X_test = obj.X_test.reshape(obj.X_test.shape[0], 1, obj.X_test.shape[1])
     elif testing_model == 'MLP':
         model = KerasClassifier(model=create_mlp_model, obj=obj, verbose=0)
         param_grid = get_mlp_param()
@@ -58,7 +55,7 @@ def randomized_search_optimization(obj, testing_model='DNN'):
                 patience=5,
                 restore_best_weights=True,
                 verbose=0
-            )
+    )
     
     search.fit(obj.X_train, obj.y_train,
                validation_data=(obj.X_val, obj.y_val),

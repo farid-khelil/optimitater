@@ -41,8 +41,8 @@ class MODEL:
         self.away_encoder = LabelEncoder()
 
         # Paramètres GA optimisés pour portabilité
-        self.population_size = 5
-        self.generations = 1
+        self.population_size = 15
+        self.generations = 20
         self.crossover_prob = 0.85
         self.mutation_prob = 0.15
 
@@ -68,7 +68,7 @@ load_data(obj)
 #     epochs=100,
 #     batch_size=32,
 # )
-execution_time = run_ga_optimization(obj)
-evaluate_best_model(obj)
-display_results(obj, execution_time) 
+execution_time = run_ga_optimization(obj, test='RNN')
+evaluate_best_model(obj, test='RNN')
+display_results(obj, execution_time, test='RNN') 
 # randomized_search_optimization(obj)
