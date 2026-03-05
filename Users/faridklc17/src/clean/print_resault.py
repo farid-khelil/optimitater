@@ -110,7 +110,6 @@ def decode_rnn_individual(individual):
 def decode_dnn_individual(individual):
         """Décodage des paramètres de l'individu pour DNN"""
         optimizers_names = ['Adam', 'RMSprop', 'SGD']
-        activations_names = ['relu', 'elu', 'selu', 'tanh']
         
         n_hidden_layers = individual[0]
         
@@ -120,7 +119,7 @@ def decode_dnn_individual(individual):
             'dropout_rate': individual[6],
             'learning_rate': individual[7],
             'optimizer': optimizers_names[individual[8]],
-            'activation': activations_names[individual[9]],
+            'activation': individual[9],   # already a string, not an index
             'batch_size': individual[10],
             'epochs': individual[11]
         }
@@ -163,8 +162,8 @@ def decode_individual(individual):
             'dropout_rate': individual[6],
             'learning_rate': individual[7],
             'optimizer': optimizers_names[individual[8]],
-            'activation': activations_names[individual[9]],
-            'batch_size': batch_sizes[individual[10]]
+            'activation': individual[9],
+            'batch_size': individual[10]
         }
         
         return params

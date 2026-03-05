@@ -20,11 +20,11 @@ def evaluate_best_model(self, test='MLP'):
             batch_size  = self.best_individual[12]
             epochs = self.best_individual[13]
         elif test == 'MLP':
-            best_model = create_mlp_model(self, n_dense_layers=self.best_individual[0], dense_units=self.best_individual[1:6], dropout_rate=self.best_individual[6], learning_rate=self.best_individual[7], optimizer_idx=self.best_individual[8], activation_idx=self.best_individual[9])
+            best_model = create_mlp_model(self, n_dense_layers=self.best_individual[0], dense_units=self.best_individual[1:6], dropout_rate=self.best_individual[6], learning_rate=self.best_individual[7], optimizer_idx=self.best_individual[8], activation=self.best_individual[9])
             batch_size  = self.best_individual[10]
             epochs = 100
         elif test == 'CNN':
-            best_model = create_cnn_model(self, n_conv_layers=self.best_individual[0], conv_filters=self.best_individual[1:4], kernel_sizes=self.best_individual[4:7], pool_sizes=self.best_individual[7:10], n_dense_layers=self.best_individual[10], dense_units=self.best_individual[11:16], dropout_rate=self.best_individual[16], learning_rate=self.best_individual[17], optimizer_idx=self.best_individual[18], activation_idx=self.best_individual[19])
+            best_model = create_cnn_model(self, n_conv_layers=self.best_individual[0], conv_filters=self.best_individual[1:4], kernel_sizes=self.best_individual[4:7], pool_sizes=self.best_individual[7:10], n_dense_layers=self.best_individual[10], dense_units=self.best_individual[11:16], dropout_rate=self.best_individual[16], learning_rate=self.best_individual[17], optimizer_idx=self.best_individual[18], activation=self.best_individual[19])
             batch_size  = self.best_individual[20]
             epochs = self.best_individual[21]   
         elif test == 'DNN':
@@ -82,9 +82,11 @@ def evaluate_individual(self, individual,test='MLP'):
             elif test == 'MLP':
                 model = create_mlp_model(self, individual[0], individual[1:6], individual[6], individual[7], individual[8], individual[9])
                 batch_size  = individual[10]
+                epochs = individual[11]
             elif test == 'CNN':
                 model = create_cnn_model(self, n_conv_layers=individual[0], conv_filters=individual[1:4], kernel_sizes=individual[4:7], pool_sizes=individual[7:10], n_dense_layers=individual[10], dense_units=individual[11:16], dropout_rate=individual[16], learning_rate=individual[17], optimizer_idx=individual[18], activation=individual[19])
                 batch_size  = individual[20]
+                epochs = individual[21]
             elif test == 'DNN':
                 model = create_dnn_model(self, n_hidden_layers=individual[0], hidden_units=individual[1:6], dropout_rate=individual[6], learning_rate=individual[7], optimizer_idx=individual[8], activation=individual[9])
                 batch_size = individual[10]

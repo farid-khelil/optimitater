@@ -16,9 +16,9 @@ def get_mlp_param(toolbox):
     toolbox.register("dropout_rate", random.choice, [0.2, 0.3, 0.5])
     toolbox.register("learning_rate", random.choice, [0.001, 0.01, 0.1])
     toolbox.register("optimizer", random.randint, 0, 2)
-    toolbox.register("activation", random.randint, 0, 3)
-    toolbox.register("batch_size", random.randint, 0, 3)
-    toolbox.register("batch_size", random.randint, 0, 3)
+    toolbox.register("activation", random.choice, ['relu', 'elu', 'selu', 'tanh'])
+    toolbox.register("batch_size", random.choice, [16, 32, 64, 128])
+    toolbox.register("n_epochs", random.choice, [50, 100, 150])
 
     toolbox.register("individual", tools.initCycle, creator.Individual,
                         (toolbox.n_dense_layers, 
@@ -27,7 +27,8 @@ def get_mlp_param(toolbox):
                          toolbox.learning_rate,
                          toolbox.optimizer,
                          toolbox.activation,
-                         toolbox.batch_size), n=1)
+                         toolbox.batch_size,
+                         toolbox.n_epochs), n=1)
 def get_cnn_param(toolbox):
     toolbox.register("n_conv_layers", random.choice, [1, 2, 3])
     toolbox.register("conv_filters", random.choice, [32, 64, 128])
@@ -127,9 +128,11 @@ def get_lstm_param(toolbox):
     
 def setup_genetic_algorithm(self, test='MLP'):
         """Configuration de l'AG sans parallélisme"""
-        # Création des types
-        creator.create("FitnessMax", base.Fitness, weights=(1.0,))
-        creator.create("Individual", list, fitness=creator.FitnessMax)
+        # Création des types  (guard: re-creating them crashes DEAP on second call)
+        if not hasattr(creator, "FitnessMax"):
+            creator.create("FitnessMax", base.Fitness, weights=(1.0,))
+        if not hasattr(creator, "Individual"):
+            creator.create("Individual", list, fitness=creator.FitnessMax)
         
         toolbox = base.Toolbox()
         
@@ -183,9 +186,11 @@ def custom_mlp_mutation(self, individual):
             elif gene_idx == 8:  # optimizer
                 individual[gene_idx] = random.randint(0, 2)
             elif gene_idx == 9:  # activation
-                individual[gene_idx] = random.randint(0, 3)
+                individual[gene_idx] = random.choice(['relu', 'elu', 'selu', 'tanh'])
             elif gene_idx == 10:  # batch_size
-                individual[gene_idx] = random.randint(0, 3)
+                individual[gene_idx] = random.choice([16, 32, 64, 128])
+            elif gene_idx == 11:  # n_epochs
+                individual[gene_idx] = random.choice([50, 100, 150])
         
         return individual,
 
@@ -252,28 +257,34 @@ def custom_rnn_mutation(self, individual):
 
 
 def custom_dnn_mutation(self, individual):
+    """Mutation for DNN — gene layout:
+    [0]   n_hidden_layers  : int   [1-5]
+    [1-5] hidden_units     : int   [32,64,128,256,512]
+    [6]   dropout_rate     : float [0.0,0.1,0.2,0.3,0.5]
+    [7]   learning_rate    : float [0.0001,0.001,0.005,0.01,0.05]
+    [8]   optimizer_idx    : int   [0,1,2]
+    [9]   activation       : str   ['relu','elu','selu','tanh']
+    [10]  batch_size       : int   [16,32,64]
+    [11]  n_epochs         : int   [50,100,150]
+    """
     if random.random() < self.mutation_prob:
         gene_idx = random.randint(0, len(individual) - 1)
-        
-        if gene_idx == 0:  # n_rnn_layers
-            individual[gene_idx] = random.choice([1, 2, 3])
-        elif gene_idx == 1:  # rnn_units
-            individual[gene_idx] = random.choice([64, 128, 256])
-        elif gene_idx == 2:  # n_dense_layers
+
+        if gene_idx == 0:                       # n_hidden_layers
             individual[gene_idx] = random.choice([1, 2, 3, 4, 5])
-        elif gene_idx in range(3, 8):  # dense_units
-            individual[gene_idx] = random.choice([64, 128, 256, 512])
-        elif gene_idx == 8:  # optimizer
-            individual[gene_idx] = random.randint(0, 2)
-        elif gene_idx == 9:  # activation
-            individual[gene_idx] = random.choice(['relu', 'elu', 'selu', 'tanh'])
-        elif gene_idx == 10:  # dropout_rate
+        elif gene_idx in range(1, 6):           # hidden_units
+            individual[gene_idx] = random.choice([32, 64, 128, 256, 512])
+        elif gene_idx == 6:                     # dropout_rate
             individual[gene_idx] = random.choice([0.0, 0.1, 0.2, 0.3, 0.5])
-        elif gene_idx == 11:  # learning_rate
+        elif gene_idx == 7:                     # learning_rate
             individual[gene_idx] = random.choice([0.0001, 0.001, 0.005, 0.01, 0.05])
-        elif gene_idx == 12:  # batch_size
-            individual[gene_idx] = random.choice([16, 32, 64, 128])
-        elif gene_idx == 13:  # n_epochs
+        elif gene_idx == 8:                     # optimizer_idx
+            individual[gene_idx] = random.choice([0, 1, 2])
+        elif gene_idx == 9:                     # activation (string)
+            individual[gene_idx] = random.choice(['relu', 'elu', 'selu', 'tanh'])
+        elif gene_idx == 10:                    # batch_size
+            individual[gene_idx] = random.choice([16, 32, 64])
+        elif gene_idx == 11:                    # n_epochs
             individual[gene_idx] = random.choice([50, 100, 150])
     return individual,
 

@@ -11,6 +11,7 @@ from MLP import get_mlp_param, create_mlp_model
 import os
 from print_resault import display_results
 from eval import evaluate_best_model
+from compare_models import compare_all_models  # ← new: all-models comparison
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 class MODEL:
@@ -68,7 +69,12 @@ load_data(obj)
 #     epochs=100,
 #     batch_size=32,
 # )
-execution_time = run_ga_optimization(obj, test='LSTM')
-evaluate_best_model(obj, test='LSTM')
-display_results(obj, execution_time, test='LSTM') 
+
+# ── run GA on ALL models, rank, chart & log ───────────────────────────────
+compare_all_models(obj)
+
+# ── single-model run (kept for reference, commented out) ──────────────────
+# execution_time = run_ga_optimization(obj, test='CNN')
+# evaluate_best_model(obj, test='CNN')
+# display_results(obj, execution_time, test='CNN')
 # randomized_search_optimization(obj)
