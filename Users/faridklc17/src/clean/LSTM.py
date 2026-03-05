@@ -23,7 +23,7 @@ def get_lstm_param():
 
     return param
 
-def create_lstm_model(obj, n_lstm_layers=2, lstm_units=[64, 128], dropout_rate=0.2, rec_dropout_rate=0.2, n_dense_layers=1, dense_units=[64], learning_rate=0.001, optimizer_idx=0, activation_idx=0):
+def create_lstm_model(obj, n_lstm_layers=2, lstm_units=[64, 128], dropout_rate=0.2, rec_dropout_rate=0.2, n_dense_layers=1, dense_units=[64], learning_rate=0.001, optimizer_idx=0, activation='relu'):
         """
         Création du modèle LSTM avec gestion dynamique des couches
         """
@@ -40,9 +40,6 @@ def create_lstm_model(obj, n_lstm_layers=2, lstm_units=[64, 128], dropout_rate=0
         # batch_size_idx = individual[12]    # Index du batch size
         
         # Mappage des index aux valeurs réelles
-        activations = ['relu', 'elu', 'selu', 'tanh']
-        activation = activations[activation_idx]
-        
         model = Sequential()
         
         # Couches LSTM (seulement le nombre utilisé)

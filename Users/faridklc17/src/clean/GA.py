@@ -79,8 +79,52 @@ def get_rnn_param(toolbox):
                          toolbox.learning_rate,
                          toolbox.batch_size,
                          toolbox.n_epochs), n=1)
-    
+def get_dnn_param(toolbox):
+    toolbox.register("n_hidden_layers", random.choice, [1, 2, 3, 4, 5])
+    toolbox.register("hidden_units", random.choice, [32, 64, 128, 256, 512])
+    toolbox.register("dropout_rate", random.choice, [0.0, 0.1, 0.2, 0.3, 0.5])
+    toolbox.register("learning_rate", random.choice, [0.0001, 0.001, 0.005, 0.01, 0.05])
+    toolbox.register("optimizer_idx", random.choice, [0, 1, 2])
+    toolbox.register("activation", random.choice, ['relu', 'elu', 'selu', 'tanh'])
+    toolbox.register("batch_size", random.choice, [16, 32, 64])
+    toolbox.register("n_epochs", random.choice, [50, 100, 150])
 
+    toolbox.register("individual", tools.initCycle, creator.Individual,
+                        (toolbox.n_hidden_layers,
+                         toolbox.hidden_units, toolbox.hidden_units, toolbox.hidden_units, toolbox.hidden_units, toolbox.hidden_units,
+                         toolbox.dropout_rate,
+                         toolbox.learning_rate,
+                         toolbox.optimizer_idx,
+                         toolbox.activation,
+                         toolbox.batch_size,
+                         toolbox.n_epochs), n=1)
+
+
+def get_lstm_param(toolbox):
+    toolbox.register("n_lstm_layers", random.choice, [1, 2, 3])
+    toolbox.register("lstm_units", random.choice, [32, 64, 128])
+    toolbox.register("dropout_rate", random.choice, [0.0, 0.1, 0.2, 0.3, 0.5])
+    toolbox.register("rec_dropout_rate", random.choice, [0.0, 0.1, 0.2])
+    toolbox.register("n_dense_layers", random.choice, [1, 2, 3])
+    toolbox.register("dense_units", random.choice, [64, 128, 256])
+    toolbox.register("learning_rate", random.choice, [0.0001, 0.001, 0.005, 0.01, 0.05])
+    toolbox.register("optimizer_idx", random.choice, [0, 1, 2])
+    toolbox.register("activation", random.choice, ['relu', 'elu', 'selu', 'tanh'])
+    toolbox.register("batch_size", random.choice, [16, 32, 64])
+    toolbox.register("n_epochs", random.choice, [50, 100, 150])
+    toolbox.register("individual", tools.initCycle, creator.Individual,
+                                (toolbox.n_lstm_layers,
+                                 toolbox.lstm_units, toolbox.lstm_units, toolbox.lstm_units,
+                                 toolbox.dropout_rate,
+                                 toolbox.rec_dropout_rate,
+                                 toolbox.n_dense_layers,
+                                 toolbox.dense_units, toolbox.dense_units, toolbox.dense_units,
+                                 toolbox.learning_rate,
+                                 toolbox.optimizer_idx,
+                                 toolbox.activation,
+                                 toolbox.batch_size,
+                                 toolbox.n_epochs), n=1)
+    
 def setup_genetic_algorithm(self, test='MLP'):
         """Configuration de l'AG sans parallélisme"""
         # Création des types
@@ -95,6 +139,10 @@ def setup_genetic_algorithm(self, test='MLP'):
             get_mlp_param(toolbox)
         elif test == 'CNN':
             get_cnn_param(toolbox)
+        elif test == 'DNN':
+            get_dnn_param(toolbox)
+        elif test == 'LSTM':
+            get_lstm_param(toolbox)
         
         
         toolbox.register("population", tools.initRepeat, list, toolbox.individual)
@@ -111,6 +159,10 @@ def setup_genetic_algorithm(self, test='MLP'):
             toolbox.register("mutate", custom_mlp_mutation, self)
         elif test == 'CNN':
             toolbox.register("mutate", custom_cnn_mutation, self)
+        elif test == 'DNN':
+            toolbox.register("mutate", custom_dnn_mutation, self)
+        elif test == 'LSTM':
+            toolbox.register("mutate", custom_lstm_mutation, self)
         toolbox.register("select", tools.selTournament, tournsize=3)
         
         return toolbox
@@ -197,6 +249,61 @@ def custom_rnn_mutation(self, individual):
             individual[gene_idx] = random.choice([50, 100, 150])
     
     return individual,
+
+
+def custom_dnn_mutation(self, individual):
+    if random.random() < self.mutation_prob:
+        gene_idx = random.randint(0, len(individual) - 1)
+        
+        if gene_idx == 0:  # n_rnn_layers
+            individual[gene_idx] = random.choice([1, 2, 3])
+        elif gene_idx == 1:  # rnn_units
+            individual[gene_idx] = random.choice([64, 128, 256])
+        elif gene_idx == 2:  # n_dense_layers
+            individual[gene_idx] = random.choice([1, 2, 3, 4, 5])
+        elif gene_idx in range(3, 8):  # dense_units
+            individual[gene_idx] = random.choice([64, 128, 256, 512])
+        elif gene_idx == 8:  # optimizer
+            individual[gene_idx] = random.randint(0, 2)
+        elif gene_idx == 9:  # activation
+            individual[gene_idx] = random.choice(['relu', 'elu', 'selu', 'tanh'])
+        elif gene_idx == 10:  # dropout_rate
+            individual[gene_idx] = random.choice([0.0, 0.1, 0.2, 0.3, 0.5])
+        elif gene_idx == 11:  # learning_rate
+            individual[gene_idx] = random.choice([0.0001, 0.001, 0.005, 0.01, 0.05])
+        elif gene_idx == 12:  # batch_size
+            individual[gene_idx] = random.choice([16, 32, 64, 128])
+        elif gene_idx == 13:  # n_epochs
+            individual[gene_idx] = random.choice([50, 100, 150])
+    return individual,
+
+def custom_lstm_mutation(self, individual):
+    if random.random() < self.mutation_prob:
+        gene_idx = random.randint(0, len(individual) - 1)
+        
+        if gene_idx == 0:  # n_lstm_layers
+            individual[gene_idx] = random.choice([1, 2, 3])
+        elif gene_idx in range(1, 4):  # lstm_units
+            individual[gene_idx] = random.choice([32, 64, 128])
+        elif gene_idx == 4:  # dropout_rate
+            individual[gene_idx] = random.choice([0.0, 0.1, 0.2, 0.3, 0.5])
+        elif gene_idx == 5:  # rec_dropout_rate
+            individual[gene_idx] = random.choice([0.0, 0.1, 0.2])
+        elif gene_idx == 6:  # n_dense_layers
+            individual[gene_idx] = random.choice([1, 2, 3])
+        elif gene_idx in range(7, 10):  # dense_units
+            individual[gene_idx] = random.choice([64, 128, 256])
+        elif gene_idx == 10:  # learning_rate
+            individual[gene_idx] = random.choice([0.0001, 0.001, 0.005, 0.01, 0.05])
+        elif gene_idx == 11:  # optimizer_idx
+            individual[gene_idx] = random.choice([0, 1, 2])
+        elif gene_idx == 12:  # activation
+            individual[gene_idx] = random.choice(['relu', 'elu', 'selu', 'tanh'])
+        elif gene_idx == 13:  # batch_size
+            individual[gene_idx] = random.choice([16, 32, 64])
+        elif gene_idx == 14:  # n_epochs
+            individual[gene_idx] = random.choice([50, 100, 150])
+    return individual,
 # execution_time is not yet defined in this context
     
 
@@ -204,11 +311,12 @@ def custom_rnn_mutation(self, individual):
 def run_ga_optimization(self, test='MLP'):
         """Exécution de l'optimisation en séquentiel"""
         start_time = time.time()
-        if test == 'RNN':
+        if test == 'RNN' or test == 'LSTM':
             self.X_train = self.X_train.reshape(self.X_train.shape[0], 1, self.X_train.shape[1])
             self.X_val = self.X_val.reshape(self.X_val.shape[0], 1, self.X_val.shape[1])
             self.X_test = self.X_test.reshape(self.X_test.shape[0], 1, self.X_test.shape[1])
-        
+
+
         # Configuration GA
         toolbox = setup_genetic_algorithm(self, test=test)
         

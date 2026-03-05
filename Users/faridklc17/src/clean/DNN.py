@@ -17,7 +17,7 @@ def get_dnn_param():
 
     return param
 
-def create_dnn_model(obj, n_hidden_layers=2, hidden_units=[64, 128], dropout_rate=0.2, learning_rate=0.001, optimizer_idx=0, activation_idx=0):
+def create_dnn_model(obj, n_hidden_layers=2, hidden_units=[64, 128], dropout_rate=0.2, learning_rate=0.001, optimizer_idx=0, activation='relu'):
     """
     Création du modèle DNN avec gestion dynamique des couches
     et nouveaux hyperparamètres
@@ -32,8 +32,6 @@ def create_dnn_model(obj, n_hidden_layers=2, hidden_units=[64, 128], dropout_rat
     # batch_size_idx = individual[10]   # Index du batch size
     
     # Mappage des index aux valeurs réelles
-    activations = ['relu', 'elu', 'selu', 'tanh']
-    activation = activations[activation_idx]
     
     model = Sequential()
     

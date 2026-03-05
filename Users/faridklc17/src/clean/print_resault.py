@@ -51,6 +51,31 @@ def display_results(self, execution_time,test='MLP'):
                 print(f"   • Activation: {best_params['activation']}")
                 print(f"   • Batch size: {best_params['batch_size']}")
                 print(f"   • Époques: {best_params['epochs']}")
+        elif test == 'DNN':
+                best_params = decode_dnn_individual(individual= self.best_individual)
+                print(f"\n🏆 MEILLEUR PARAMÉTRAGE OBTENU:")
+                print(f"   • Couches cachées: {best_params['n_hidden_layers']}")
+                print(f"   • Unités par couche cachée: {best_params['hidden_units']}")
+                print(f"   • Taux dropout: {best_params['dropout_rate']}")
+                print(f"   • Taux apprentissage: {best_params['learning_rate']}")
+                print(f"   • Optimiseur: {best_params['optimizer']}")
+                print(f"   • Activation: {best_params['activation']}")
+                print(f"   • Batch size: {best_params['batch_size']}")
+                print(f"   • Époques: {best_params['epochs']}")
+        elif test == 'LSTM':
+                best_params = decode_lstm_individual(individual= self.best_individual)
+                print(f"\n🏆 MEILLEUR PARAMÉTRAGE OBTENU:")
+                print(f"   • Couches LSTM: {best_params['n_lstm_layers']}")
+                print(f"   • Unités par couche LSTM: {best_params['lstm_units']}")
+                print(f"   • Taux dropout: {best_params['dropout_rate']}")
+                print(f"   • Taux dropout récurrent: {best_params['rec_dropout_rate']}")
+                print(f"   • Couches denses: {best_params['n_dense_layers']}")
+                print(f"   • Unités par couche dense: {best_params['dense_units']}")
+                print(f"   • Taux apprentissage: {best_params['learning_rate']}")
+                print(f"   • Optimiseur: {best_params['optimizer']}")
+                print(f"   • Activation: {best_params['activation']}")
+                print(f"   • Batch size: {best_params['batch_size']}")
+                print(f"   • Époques: {best_params['epochs']}")
         # Fitness et métriques
         print(f"\n📊 PERFORMANCE DU MEILLEUR MODÈLE:")
         print(f"   • Fitness (Recall): {self.best_fitness:.4f}")
@@ -81,6 +106,47 @@ def decode_rnn_individual(individual):
             'batch_size': individual[12],
             'epochs': individual[13]
         }
+        return params
+def decode_dnn_individual(individual):
+        """Décodage des paramètres de l'individu pour DNN"""
+        optimizers_names = ['Adam', 'RMSprop', 'SGD']
+        activations_names = ['relu', 'elu', 'selu', 'tanh']
+        
+        n_hidden_layers = individual[0]
+        
+        params = {
+            'n_hidden_layers': n_hidden_layers,
+            'hidden_units': individual[1:1+n_hidden_layers],
+            'dropout_rate': individual[6],
+            'learning_rate': individual[7],
+            'optimizer': optimizers_names[individual[8]],
+            'activation': activations_names[individual[9]],
+            'batch_size': individual[10],
+            'epochs': individual[11]
+        }
+        
+        return params
+def decode_lstm_individual(individual):
+        """Décodage des paramètres de l'individu pour LSTM"""
+        optimizers_names = ['Adam', 'RMSprop', 'SGD']
+        
+        n_lstm_layers = individual[0]
+        n_dense_layers = individual[6]
+        
+        params = {
+            'n_lstm_layers': n_lstm_layers,
+            'lstm_units': individual[1:4],
+            'dropout_rate': individual[4],
+            'rec_dropout_rate': individual[5],
+            'n_dense_layers': n_dense_layers,
+            'dense_units': individual[7:10],
+            'learning_rate': individual[10],
+            'optimizer': optimizers_names[individual[11]],
+            'activation': individual[12],
+            'batch_size': individual[13],
+            'epochs':individual[14]
+        }
+        
         return params
 
 def decode_individual(individual):
