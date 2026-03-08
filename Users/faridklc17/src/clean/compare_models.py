@@ -321,6 +321,8 @@ def generate_charts(all_results, ranking_rows, output_dir):
 
     _chart_generation_fitness(all_results, output_dir)
     _chart_recall_scores(ranking_rows, output_dir)
+    _chart_per_model_generations(all_results, output_dir)
+    _chart_best_params(all_results, output_dir)
 
     print(f"\n📊  Charts saved  →  {output_dir}")
 
@@ -529,6 +531,260 @@ def _chart_recall_scores(ranking_rows, output_dir):
     ax.set_axisbelow(True)
     plt.tight_layout()
     _save_fig(fig, output_dir, 'chart_6_recall_scores.png')
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  CHART 7 — PER-MODEL GENERATION SUBPLOTS
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _chart_per_model_generations(all_results, output_dir):
+    """
+    One subplot per model showing max (best) fitness per generation.
+    Solid line = best individual, dashed = population average.
+    """
+    valid = [(m, r) for m, r in all_results.items()
+             if r.get('logbook') is not None and not r['error']]
+    if not valid:
+        return
+
+    n     = len(valid)
+    ncols = min(3, n)
+    nrows = (n + ncols - 1) // ncols
+
+    fig, axes = plt.subplots(nrows, ncols,
+                             figsize=(6 * ncols, 4.5 * nrows),
+                             facecolor=RB_BG, squeeze=False)
+    fig.suptitle('📈  GA Max Fitness per Generation — per Model',
+                 fontsize=15, fontweight='bold', color=RB_GOLD, y=1.02)
+
+    for idx, (model, res) in enumerate(valid):
+        row, col = divmod(idx, ncols)
+        ax = axes[row][col]
+        ax.set_facecolor(RB_PANEL)
+        color = MODEL_COLORS.get(model, RB_RED)
+
+        lb       = res['logbook']
+        gens     = lb.select('gen')
+        best_fit = lb.select('max')
+        avg_fit  = lb.select('avg')
+
+        ax.plot(gens, best_fit, color=color, linewidth=2.5,
+                marker='o', markersize=5, label='Best', zorder=3)
+        ax.plot(gens, avg_fit, color=color, linewidth=1.2,
+                linestyle='--', alpha=0.55, label='Avg')
+        ax.fill_between(gens, avg_fit, best_fit, color=color, alpha=0.08)
+
+        # Annotate the final best value
+        ax.annotate(f'{best_fit[-1]:.4f}',
+                    xy=(gens[-1], best_fit[-1]),
+                    xytext=(6, 6), textcoords='offset points',
+                    fontsize=9, color=RB_WHITE, fontweight='bold',
+                    arrowprops=dict(arrowstyle='->', color=color, lw=1.2))
+
+        ax.set_title(model, fontsize=13, fontweight='bold', color=color, pad=8)
+        ax.set_xlabel('Generation', fontsize=9, color=RB_WHITE)
+        ax.set_ylabel('Fitness (Recall)', fontsize=9, color=RB_WHITE)
+        ax.set_ylim(0, 1.05)
+        ax.tick_params(colors=RB_WHITE, labelsize=8)
+        ax.spines[:].set_color('#333333')
+        ax.yaxis.grid(True, linestyle='--', alpha=0.2, color=RB_GRAY)
+        ax.xaxis.grid(True, linestyle='--', alpha=0.15, color=RB_GRAY)
+        ax.set_axisbelow(True)
+        ax.legend(fontsize=8, facecolor=RB_PANEL,
+                  labelcolor=RB_WHITE, edgecolor='#333333')
+
+    # Hide unused subplots
+    for idx in range(len(valid), nrows * ncols):
+        row, col = divmod(idx, ncols)
+        axes[row][col].set_visible(False)
+
+    plt.tight_layout()
+    _save_fig(fig, output_dir, 'chart_7_per_model_generations.png')
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  CHART 8 — BEST HYPERPARAMETERS TABLE
+# ═══════════════════════════════════════════════════════════════════════════
+
+_OPTIMIZERS = {0: 'Adam', 1: 'SGD', 2: 'RMSprop'}
+
+
+def _decode_best_params(model_type, individual):
+    """
+    Decode a DEAP Individual list into a readable {param: value} dict
+    based on the gene layout in GA.py.
+    """
+    if individual is None:
+        return {}
+    ind = list(individual)
+    p   = {}
+
+    if model_type == 'MLP':
+        # [0] n_dense_layers | [1-5] dense_units | [6] dropout | [7] lr
+        # [8] optimizer | [9] activation | [10] batch_size | [11] n_epochs
+        n = ind[0]
+        p['n_dense_layers'] = n
+        p['dense_units']    = str(ind[1 : 1 + n])
+        p['dropout_rate']   = ind[6]
+        p['learning_rate']  = ind[7]
+        p['optimizer']      = _OPTIMIZERS.get(ind[8],  ind[8])
+        p['activation']     = ind[9]
+        p['batch_size']     = ind[10]
+        p['n_epochs']       = ind[11]
+
+    elif model_type == 'CNN':
+        # [0] n_conv | [1-3] conv_filters | [4-6] kernel_sizes | [7-9] pool_sizes
+        # [10] n_dense | [11-15] dense_units | [16] dropout | [17] lr
+        # [18] optimizer | [19] activation | [20] batch_size | [21] n_epochs
+        nc = ind[0]
+        nd = ind[10]
+        p['n_conv_layers']  = nc
+        p['conv_filters']   = str(ind[1 : 1 + nc])
+        p['kernel_sizes']   = str(ind[4 : 4 + nc])
+        p['pool_sizes']     = str(ind[7 : 7 + nc])
+        p['n_dense_layers'] = nd
+        p['dense_units']    = str(ind[11 : 11 + nd])
+        p['dropout_rate']   = ind[16]
+        p['learning_rate']  = ind[17]
+        p['optimizer']      = _OPTIMIZERS.get(ind[18], ind[18])
+        p['activation']     = ind[19]
+        p['batch_size']     = ind[20]
+        p['n_epochs']       = ind[21]
+
+    elif model_type == 'RNN':
+        # [0] n_rnn | [1] rnn_units | [2] n_dense | [3-7] dense_units
+        # [8] optimizer | [9] activation | [10] dropout | [11] lr
+        # [12] batch_size | [13] n_epochs
+        nd = ind[2]
+        p['n_rnn_layers']   = ind[0]
+        p['rnn_units']      = ind[1]
+        p['n_dense_layers'] = nd
+        p['dense_units']    = str(ind[3 : 3 + nd])
+        p['dropout_rate']   = ind[10]
+        p['learning_rate']  = ind[11]
+        p['optimizer']      = _OPTIMIZERS.get(ind[8],  ind[8])
+        p['activation']     = ind[9]
+        p['batch_size']     = ind[12]
+        p['n_epochs']       = ind[13]
+
+    elif model_type == 'DNN':
+        # [0] n_hidden | [1-5] hidden_units | [6] dropout | [7] lr
+        # [8] optimizer_idx | [9] activation | [10] batch_size | [11] n_epochs
+        n = ind[0]
+        p['n_hidden_layers'] = n
+        p['hidden_units']    = str(ind[1 : 1 + n])
+        p['dropout_rate']    = ind[6]
+        p['learning_rate']   = ind[7]
+        p['optimizer']       = _OPTIMIZERS.get(ind[8],  ind[8])
+        p['activation']      = ind[9]
+        p['batch_size']      = ind[10]
+        p['n_epochs']        = ind[11]
+
+    elif model_type == 'LSTM':
+        # [0] n_lstm | [1-3] lstm_units | [4] dropout | [5] rec_dropout
+        # [6] n_dense | [7-9] dense_units | [10] lr | [11] optimizer_idx
+        # [12] activation | [13] batch_size | [14] n_epochs
+        nl = ind[0]
+        nd = ind[6]
+        p['n_lstm_layers']  = nl
+        p['lstm_units']     = str(ind[1 : 1 + nl])
+        p['dropout_rate']   = ind[4]
+        p['rec_dropout']    = ind[5]
+        p['n_dense_layers'] = nd
+        p['dense_units']    = str(ind[7 : 7 + nd])
+        p['learning_rate']  = ind[10]
+        p['optimizer']      = _OPTIMIZERS.get(ind[11], ind[11])
+        p['activation']     = ind[12]
+        p['batch_size']     = ind[13]
+        p['n_epochs']       = ind[14]
+
+    return p
+
+
+def _chart_best_params(all_results, output_dir):
+    """
+    Table chart: best hyperparameters for every model side-by-side.
+    Rows = param names, columns = models.
+    """
+    model_params = {
+        m: _decode_best_params(m, r['best_individual'])
+        for m, r in all_results.items()
+    }
+
+    # Collect all param names in insertion order
+    all_keys = []
+    seen     = set()
+    for params in model_params.values():
+        for k in params:
+            if k not in seen:
+                all_keys.append(k)
+                seen.add(k)
+
+    models = list(all_results.keys())
+    if not all_keys or not models:
+        return
+
+    nrows = len(all_keys)
+    ncols = len(models)
+
+    fig_h = max(3.0, 0.6 * nrows + 2.0)
+    fig_w = max(8.0, 2.8 * ncols + 1.5)
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h), facecolor=RB_BG)
+    ax.set_facecolor(RB_BG)
+    ax.axis('off')
+    ax.set_title('🔧  Best Hyperparameters per Model (GA Optimised)',
+                 fontsize=14, fontweight='bold', color=RB_GOLD,
+                 pad=18, loc='center')
+
+    # Build cell data
+    cell_data = []
+    for key in all_keys:
+        cell_data.append([str(model_params[m].get(key, '—')) for m in models])
+
+    # Alternating row backgrounds
+    cell_colors = [
+        (['#1E1E1E' if i % 2 == 0 else '#252525'] * ncols)
+        for i in range(nrows)
+    ]
+
+    tbl = ax.table(
+        cellText   = cell_data,
+        rowLabels  = all_keys,
+        colLabels  = models,
+        cellLoc    = 'center',
+        rowLoc     = 'right',
+        loc        = 'center',
+        cellColours= cell_colors,
+    )
+    tbl.auto_set_font_size(False)
+    tbl.set_fontsize(9)
+    tbl.scale(1.2, 1.7)
+
+    # Style column headers (model names)
+    for col_idx, model in enumerate(models):
+        cell = tbl[0, col_idx]
+        cell.set_facecolor(MODEL_COLORS.get(model, RB_RED))
+        cell.set_text_props(color='#0D0D0D', fontweight='bold', fontsize=10)
+        cell.set_edgecolor('#0D0D0D')
+
+    # Style row label cells
+    for row_idx in range(nrows):
+        cell = tbl[row_idx + 1, -1]
+        cell.set_facecolor('#111111')
+        cell.set_text_props(color=RB_GOLD, fontsize=8.5)
+        cell.set_edgecolor('#333333')
+
+    # Style data cells
+    for row_idx in range(nrows):
+        bg = '#1E1E1E' if row_idx % 2 == 0 else '#252525'
+        for col_idx in range(ncols):
+            cell = tbl[row_idx + 1, col_idx]
+            cell.set_facecolor(bg)
+            cell.set_text_props(color=RB_WHITE, fontsize=8.5)
+            cell.set_edgecolor('#333333')
+
+    plt.tight_layout()
+    _save_fig(fig, output_dir, 'chart_8_best_params.png')
 
 
 def _banner(text, char='─', width=80):

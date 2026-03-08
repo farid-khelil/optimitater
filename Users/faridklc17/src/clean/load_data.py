@@ -17,7 +17,7 @@ def is_hex(s):
         return False
     
 def load_data(obj):
-    idx = '4'
+    idx = input("Select dataset (1: RBA, 2: WPD, 3: PEHF, 4: Custom): ")
     
     if idx == '1' :
         df = pd.read_excel('/home/farid/pfe/data/processed/ransomware/RBA.xlsx')
