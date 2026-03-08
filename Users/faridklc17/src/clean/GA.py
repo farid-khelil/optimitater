@@ -356,7 +356,10 @@ def run_ga_optimization(self, test='MLP'):
         )
         
         execution_time =  time.time() - start_time
-        
+
+        # Store logbook for per-generation charts
+        self.logbook = logbook
+
         # Meilleur individu
         self.best_individual = hall_of_fame[0]
         self.best_fitness = self.best_individual.fitness.values[0]

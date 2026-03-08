@@ -55,7 +55,8 @@ class MODEL:
 
 # obj = MODEL('/home/farid/pfe/data/Ransomware_headers.xlsx')
 # obj = MODEL('/home/azureuser/cloudfiles/code/Users/faridklc17/Ransomware_headers.xlsx')
-obj = MODEL('/home/azureuser/cloudfiles/code/Users/faridklc17/src/RBA.xlsx')
+# obj = MODEL('/home/azureuser/cloudfiles/code/Users/faridklc17/src/RBA.xlsx')
+obj = MODEL('/home/farid/pfe/data/processed/ransomware/RISS.csv')
 load_data(obj)
 # load_and_preprocess_data(obj)
 
