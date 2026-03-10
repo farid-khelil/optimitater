@@ -1,6 +1,7 @@
 
 import pandas as pd
 from sklearn.preprocessing import LabelEncoder
+from sklearn.feature_selection import VarianceThreshold, SelectKBest, f_classif
 import numpy as np
 from sklearn.model_selection import train_test_split
 import matplotlib
@@ -120,6 +121,25 @@ def load_data(obj):
     obj.X_train = obj.scaler.fit_transform(obj.X_train)
     obj.X_val = obj.scaler.transform(obj.X_val)
     obj.X_test = obj.scaler.transform(obj.X_test)
+
+    # ── Feature selection for RISS (16 380 features → manageable subset) ────────
+    # Without this the model has ~1 M params for 1 067 samples → extreme overfit.
+    if idx == '4':
+        # 1. Remove constant / near-constant features
+        vt = VarianceThreshold(threshold=0.0)
+        obj.X_train = vt.fit_transform(obj.X_train)
+        obj.X_val   = vt.transform(obj.X_val)
+        obj.X_test  = vt.transform(obj.X_test)
+        print(f"After VarianceThreshold: {obj.X_train.shape[1]} features remaining")
+
+        # 2. Keep top-500 features ranked by ANOVA F-score (fit on train only)
+        K = min(500, obj.X_train.shape[1])
+        selector = SelectKBest(f_classif, k=K)
+        obj.X_train = selector.fit_transform(obj.X_train, obj.y_train)
+        obj.X_val   = selector.transform(obj.X_val)
+        obj.X_test  = selector.transform(obj.X_test)
+        obj.feature_selector = selector          # store for later use
+        print(f"After SelectKBest(k={K}): {obj.X_train.shape[1]} features")
 
     obj.n_features = obj.X_train.shape[1]
 

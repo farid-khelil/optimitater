@@ -19,10 +19,4 @@ Users/faridklc17/src/MLP.ipynb
 Users/faridklc17/src/.amlignore
 Users/faridklc17/src/clean/.amlignore
 Users/faridklc17/src/clean/__pycache__/.amlignore
-Users/faridklc17/src/clean/results/chart_1_comparison_bar.png
-Users/faridklc17/src/clean/results/chart_1_comparison_bar.png
-Users/faridklc17/src/clean/results/chart_2_radar.png
-Users/faridklc17/src/clean/results/chart_3_execution_time.png
-Users/faridklc17/src/clean/results/chart_4_f1_ranking.png
-Users/faridklc17/src/clean/results/chart_1_comparison_bar.png
-Users/faridklc17/src/clean/results/chart_1_comparison_bar.png
+Users/faridklc17/src/clean/results/*

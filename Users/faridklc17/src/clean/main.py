@@ -8,11 +8,67 @@ from load_data_salmi import load_and_preprocess_data
 from GS import grid_search_optimization
 from RS import randomized_search_optimization
 from MLP import get_mlp_param, create_mlp_model
-import os
+from CNN import get_cnn_param, create_cnn_model
+import os, sys
 from print_resault import display_results
 from eval import evaluate_best_model
 from compare_models import compare_all_models  # ← new: all-models comparison
+import numpy as np
+from sklearn.metrics import accuracy_score
 
+# ── Tee: mirror every print/stderr line to a log file ─────────────────────
+import datetime, atexit
+
+class _Tee:
+    """Write to both the original stream and a log file simultaneously."""
+    def __init__(self, original, log_path):
+        self._orig = original
+        self._file = open(log_path, 'a', encoding='utf-8', buffering=1)
+        self._file.write(
+            f"\n{'='*80}\n"
+            f"  Session started: {datetime.datetime.now().strftime('%Y-%m-%d  %H:%M:%S')}\n"
+            f"{'='*80}\n"
+        )
+        atexit.register(self.close)
+
+    def write(self, data):
+        self._orig.write(data)
+        # Strip ANSI colour codes before writing to file
+        import re
+        clean = re.sub(r'\x1b\[[0-9;]*m', '', data)
+        self._file.write(clean)
+
+    def flush(self):
+        self._orig.flush()
+        self._file.flush()
+
+    def close(self):
+        if not self._file.closed:
+            self._file.write(
+                f"\n{'='*80}\n"
+                f"  Session ended:   {datetime.datetime.now().strftime('%Y-%m-%d  %H:%M:%S')}\n"
+                f"{'='*80}\n"
+            )
+            self._file.close()
+
+    # Delegate everything else (isatty, fileno, …) to the original stream
+    def __getattr__(self, name):
+        return getattr(self._orig, name)
+
+_LOG_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), 'results', 'run.log'
+)
+os.makedirs(os.path.dirname(_LOG_PATH), exist_ok=True)
+sys.stdout = _Tee(sys.stdout, _LOG_PATH)
+sys.stderr = _Tee(sys.stderr, _LOG_PATH)
+print(f"📄  Logging to: {_LOG_PATH}")
+# ──────────────────────────────────────────────────────────────────────────
+
+class Color:
+    RED = '\033[91m'
+    GREEN = '\033[92m'
+    BLUE = '\033[94m'
+    END = '\033[0m' # Reset color
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 class MODEL:
     """
@@ -52,6 +108,35 @@ class MODEL:
         self.best_fitness = 0
         self.best_metrics = {}
 
+def test_model(self):
+    from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix
+    preds = self.model.predict(self.X_test)
+
+    # ── Decode predictions correctly based on output activation ──────────
+    # sigmoid  → shape (N, 1), threshold at 0.5
+    # softmax  → shape (N, C), take argmax
+    if self.n_classes == 2:                              # sigmoid output
+        classes = (preds > 0.5).astype(int).flatten()
+    else:                                                # softmax output
+        classes = preds.argmax(axis=1)
+
+    y_true = np.array(self.y_test).flatten()
+
+    acc  = accuracy_score(y_true, classes)
+    prec = precision_score(y_true, classes, average='weighted', zero_division=0)
+    rec  = recall_score(y_true, classes,    average='weighted', zero_division=0)
+    f1   = f1_score(y_true, classes,        average='weighted', zero_division=0)
+    cm   = confusion_matrix(y_true, classes)
+
+    print(f"\n{Color.BLUE}── Test-set evaluation ──────────────────────{Color.END}")
+    print(f"  pred shape : {preds.shape}  |  unique preds : {np.unique(classes)}")
+    print(f"  {Color.GREEN}Accuracy   : {acc  * 100:.2f}%{Color.END}")
+    print(f"  Precision  : {prec * 100:.2f}%")
+    print(f"  Recall     : {rec  * 100:.2f}%")
+    print(f"  F1-Score   : {f1   * 100:.2f}%")
+    print(f"  Confusion Matrix:\n{cm}")
+
+
 
 # obj = MODEL('/home/farid/pfe/data/Ransomware_headers.xlsx')
 # obj = MODEL('/home/azureuser/cloudfiles/code/Users/faridklc17/Ransomware_headers.xlsx')
@@ -61,18 +146,29 @@ load_data(obj)
 # load_and_preprocess_data(obj)
 
 # model = build_cae_model(obj)
-# model = create_mlp_model(obj=obj, n_dense_layers=1, dense_units=[64, 128, 256, 128, 64], dropout_rate=0.2, learning_rate=0.001, optimizer_idx=1, activation_idx=0, batch_size_idx=0)
+# 3 layers: 256 → 128 → 64  (consistent n_dense_layers=3 / dense_units length)
+# obj.model = create_cnn_model(
+#     obj=obj,
+# )
 
+# from tensorflow.keras.callbacks import EarlyStopping
+# early_stop = EarlyStopping(
+#     monitor='val_loss',
+#     patience=10,
+#     restore_best_weights=True,
+#     verbose=1
+# )
 
-# history = model.fit(
+# history = obj.model.fit(
 #     obj.X_train, obj.y_train,
 #     validation_data=(obj.X_val, obj.y_val),
 #     epochs=100,
 #     batch_size=32,
+#     callbacks=[early_stop],
 # )
-
+# test_model(obj)
 # ── run GA on ALL models, rank, chart & log ───────────────────────────────
-compare_all_models(obj)
+# compare_all_models(obj)
 
 # ── single-model run (kept for reference, commented out) ──────────────────
 # execution_time = run_ga_optimization(obj, test='CNN')
