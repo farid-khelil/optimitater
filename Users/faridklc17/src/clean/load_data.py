@@ -24,17 +24,17 @@ def load_data(obj, idx=None):
         idx = input("Select dataset (1: RBA, 2: WPD, 3: PEHF, 4: RISS): ").strip()
     
     if idx == '1' :
-        df = pd.read_excel(obj.data_path, header=None)
+        df = pd.read_excel(obj.data_path)
         target_col = 'Family'
         encodes =  ['EntryPoint', 'PEType', 'magic_number', 'bytes_on_last_page', 'pages_in_file', 'relocations', 'size_of_header', 'min_extra_paragraphs', 'max_extra_paragraphs', 'init_ss_value', 'init_sp_value', 'init_ip_value', 'init_cs_value', 'over_lay_number', 'oem_identifier', 'address_of_ne_header', 'Magic', 'SizeOfCode', 'SizeOfInitializedData', 'SizeOfUninitializedData', 'AddressOfEntryPoint', 'BaseOfCode', 'BaseOfData', 'ImageBase', 'SectionAlignment', 'FileAlignment', 'OperatingSystemVersion', 'ImageVersion', 'SizeOfImage', 'SizeOfHeaders', 'Checksum', 'Subsystem', 'SizeofStackReserve', 'SizeofStackCommit', 'SizeofHeapCommit', 'SizeofHeapReserve', 'LoaderFlags', 'text_VirtualSize', 'text_VirtualAddress', 'text_SizeOfRawData', 'text_PointerToRawData', 'text_PointerToRelocations', 'text_PointerToLineNumbers', 'rdata_VirtualSize', 'rdata_VirtualAddress', 'rdata_SizeOfRawData', 'rdata_PointerToRawData', 'rdata_PointerToRelocations', 'rdata_PointerToLineNumbers', 'rdata_Characteristics']
         drops = ['md5', 'sha1', 'file_extension', 'MachineType', 'DllCharacteristics', 'text_Characteristics', 'Class', 'Category']
     elif idx == '2' :
-        df = pd.read_excel(obj.data_path, header=None)
+        df = pd.read_excel(obj.data_path)
         target_col = 'Benign'
         encodes = []
         drops = ['FileName', 'md5Hash']
     elif idx == '3' :
-        df = pd.read_csv(obj.data_path, header=None)
+        df = pd.read_csv(obj.data_path)
         target_col = 'GR'
         encodes = []
         drops = ['filename']
