@@ -16,8 +16,13 @@ from compare_models import compare_all_models  # ← new: all-models comparison
 import numpy as np
 from sklearn.metrics import accuracy_score
 
-# ── Tee: mirror every print/stderr line to a log file ─────────────────────
-import datetime, atexit
+# ── Environment detection ─────────────────────────────────────────────────
+import os, sys
+ON_KAGGLE   = os.path.isdir('/kaggle/working')
+BASE_OUT    = '/kaggle/working'                  if ON_KAGGLE else '/home/farid/pfe'
+DATA_ROOT   = '/kaggle/input'                    if ON_KAGGLE else '/home/farid/pfe/data/processed'
+RISS_PATH   = f'{DATA_ROOT}/riss-dataset/RISS.csv' if ON_KAGGLE else f'{DATA_ROOT}/ransomware/RISS.csv'
+# ──────────────────────────────────────────────────────────────────────────
 
 class _Tee:
     """Write to both the original stream and a log file simultaneously."""
@@ -55,9 +60,7 @@ class _Tee:
     def __getattr__(self, name):
         return getattr(self._orig, name)
 
-_LOG_PATH = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), 'results', 'run.log'
-)
+_LOG_PATH = os.path.join(BASE_OUT, 'results', 'run.log')
 os.makedirs(os.path.dirname(_LOG_PATH), exist_ok=True)
 sys.stdout = _Tee(sys.stdout, _LOG_PATH)
 sys.stderr = _Tee(sys.stderr, _LOG_PATH)
@@ -79,8 +82,8 @@ class MODEL:
     def __init__(self, data_path):
         """Initialisation avec le chemin du dataset"""
 
-        self.saved_model_path = '/home/farid/pfe/models/saved/PremierLeague.keras'
-        self.saved_data_path = '/home/farid/pfe/data/processed/PremierLeague_processed_data.csv'
+        self.saved_model_path = os.path.join(BASE_OUT, 'models', 'saved', 'PremierLeague.keras')
+        self.saved_data_path  = os.path.join(BASE_OUT, 'data', 'processed', 'PremierLeague_processed_data.csv')
         self.data_path = data_path
         self.X_train = None
         self.X_val = None
@@ -141,8 +144,8 @@ def test_model(self):
 # obj = MODEL('/home/farid/pfe/data/Ransomware_headers.xlsx')
 # obj = MODEL('/home/azureuser/cloudfiles/code/Users/faridklc17/Ransomware_headers.xlsx')
 # obj = MODEL('/home/azureuser/cloudfiles/code/Users/faridklc17/src/RBA.xlsx')
-obj = MODEL('/home/farid/pfe/data/processed/ransomware/RISS.csv')
-load_data(obj)
+obj = MODEL(RISS_PATH)
+load_data(obj, idx='4')
 # load_and_preprocess_data(obj)
 
 # model = build_cae_model(obj)

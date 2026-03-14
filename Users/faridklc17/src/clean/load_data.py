@@ -17,21 +17,24 @@ def is_hex(s):
     except:
         return False
     
-def load_data(obj):
-    idx = input("Select dataset (1: RBA, 2: WPD, 3: PEHF, 4: Custom): ")
+def load_data(obj, idx=None):
+    # idx can be passed directly (required on Kaggle / non-interactive env).
+    # Falls back to an interactive prompt when running locally.
+    if idx is None:
+        idx = input("Select dataset (1: RBA, 2: WPD, 3: PEHF, 4: RISS): ").strip()
     
     if idx == '1' :
-        df = pd.read_excel('/home/farid/pfe/data/processed/ransomware/RBA.xlsx')
+        df = pd.read_excel(obj.data_path, header=None)
         target_col = 'Family'
         encodes =  ['EntryPoint', 'PEType', 'magic_number', 'bytes_on_last_page', 'pages_in_file', 'relocations', 'size_of_header', 'min_extra_paragraphs', 'max_extra_paragraphs', 'init_ss_value', 'init_sp_value', 'init_ip_value', 'init_cs_value', 'over_lay_number', 'oem_identifier', 'address_of_ne_header', 'Magic', 'SizeOfCode', 'SizeOfInitializedData', 'SizeOfUninitializedData', 'AddressOfEntryPoint', 'BaseOfCode', 'BaseOfData', 'ImageBase', 'SectionAlignment', 'FileAlignment', 'OperatingSystemVersion', 'ImageVersion', 'SizeOfImage', 'SizeOfHeaders', 'Checksum', 'Subsystem', 'SizeofStackReserve', 'SizeofStackCommit', 'SizeofHeapCommit', 'SizeofHeapReserve', 'LoaderFlags', 'text_VirtualSize', 'text_VirtualAddress', 'text_SizeOfRawData', 'text_PointerToRawData', 'text_PointerToRelocations', 'text_PointerToLineNumbers', 'rdata_VirtualSize', 'rdata_VirtualAddress', 'rdata_SizeOfRawData', 'rdata_PointerToRawData', 'rdata_PointerToRelocations', 'rdata_PointerToLineNumbers', 'rdata_Characteristics']
         drops = ['md5', 'sha1', 'file_extension', 'MachineType', 'DllCharacteristics', 'text_Characteristics', 'Class', 'Category']
     elif idx == '2' :
-        df = pd.read_excel('/home/farid/pfe/data/processed/ransomware/WPD.xlsx')
+        df = pd.read_excel(obj.data_path, header=None)
         target_col = 'Benign'
         encodes = []
         drops = ['FileName', 'md5Hash']
     elif idx == '3' :
-        df = pd.read_csv('/home/farid/pfe/data/processed/ransomware/PEHF.csv')
+        df = pd.read_csv(obj.data_path, header=None)
         target_col = 'GR'
         encodes = []
         drops = ['filename']
@@ -235,7 +238,7 @@ def _plot_class_distribution(y_series, target_col):
 
     plt.tight_layout(rect=[0, 0.04, 1, 1])
 
-    out_dir  = '/home/farid/pfe/results/figures'
+    out_dir  = '/kaggle/working/figures' if os.path.isdir('/kaggle') else '/home/farid/pfe/results/figures'
     out_file = os.path.join(out_dir, 'target_class_distribution.png')
     os.makedirs(out_dir, exist_ok=True)
     plt.savefig(out_file, dpi=160, bbox_inches='tight', facecolor=RB_BG)
