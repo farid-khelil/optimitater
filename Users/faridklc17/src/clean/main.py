@@ -1,6 +1,6 @@
 
 from time import time
-from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.preprocessing import LabelEncoder, StandardScaler ,MinMaxScaler
 from CAE import build_cae_model
 from GA import run_ga_optimization
 from load_data import load_data
@@ -15,13 +15,16 @@ from eval import evaluate_best_model
 from compare_models import compare_all_models  # ← new: all-models comparison
 import numpy as np
 from sklearn.metrics import accuracy_score
+from tensorflow.keras.callbacks import EarlyStopping
+import datetime
+import atexit
 
 # ── Environment detection ─────────────────────────────────────────────────
 import os, sys
 ON_KAGGLE   = os.path.isdir('/kaggle/working')
 BASE_OUT    = '/kaggle/working'                  if ON_KAGGLE else '/home/farid/pfe'
 DATA_ROOT   = '/kaggle/input'                    if ON_KAGGLE else '/home/farid/pfe/data/processed'
-RISS_PATH   = f'{DATA_ROOT}/riss-dataset/RISS.csv' if ON_KAGGLE else f'{DATA_ROOT}/ransomware/RISS.csv'
+RISS_PATH   = f'{DATA_ROOT}/riss-dataset/RISS.csv' if ON_KAGGLE else f'{DATA_ROOT}/ransomware/PEHF.csv'
 # ──────────────────────────────────────────────────────────────────────────
 
 class _Tee:
@@ -94,6 +97,7 @@ class MODEL:
         self.n_features = None
         self.n_classes = None
         self.model = None
+        self.smootheringScaler = MinMaxScaler()
         self.scaler = StandardScaler()
         self.label_encoder = LabelEncoder()
         self.result_encoder = LabelEncoder()
@@ -145,30 +149,29 @@ def test_model(self):
 # obj = MODEL('/home/azureuser/cloudfiles/code/Users/faridklc17/Ransomware_headers.xlsx')
 # obj = MODEL('/home/azureuser/cloudfiles/code/Users/faridklc17/src/RBA.xlsx')
 obj = MODEL(RISS_PATH)
-load_data(obj, idx='4')
+load_data(obj, idx='3')
 # load_and_preprocess_data(obj)
 
-# model = build_cae_model(obj)
 # 3 layers: 256 → 128 → 64  (consistent n_dense_layers=3 / dense_units length)
-# obj.model = create_cnn_model(
-#     obj=obj,
-# )
+obj.model = create_cnn_model(
+     obj=obj,
+ )
 
-# from tensorflow.keras.callbacks import EarlyStopping
-# early_stop = EarlyStopping(
-#     monitor='val_loss',
-#     patience=10,
-#     restore_best_weights=True,
-#     verbose=1
-# )
 
-# history = obj.model.fit(
-#     obj.X_train, obj.y_train,
-#     validation_data=(obj.X_val, obj.y_val),
-#     epochs=100,
-#     batch_size=32,
-#     callbacks=[early_stop],
-# )
+early_stop = EarlyStopping(
+    monitor='val_loss',
+    patience=10,
+    restore_best_weights=True,
+    verbose=1
+)
+
+history = obj.model.fit(
+    obj.X_train, obj.y_train,
+    validation_data=(obj.X_val, obj.y_val),
+    epochs=100,
+    batch_size=32,
+    callbacks=[early_stop],
+)
 # test_model(obj)
 # ── run GA on ALL models, rank, chart & log ───────────────────────────────
 # compare_all_models(obj)

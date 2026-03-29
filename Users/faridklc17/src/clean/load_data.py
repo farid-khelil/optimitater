@@ -10,6 +10,27 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 import os
 
+
+def _read_excel_safe(path):
+    """Read Excel files reliably on Kaggle/local by forcing openpyxl."""
+    return pd.read_excel(path, engine='openpyxl')
+
+
+def _normalize_columns(df):
+    """Strip whitespace / BOM artifacts from column names."""
+    df = df.copy()
+    df.columns = [str(col).replace('\ufeff', '').strip() for col in df.columns]
+    return df
+
+
+def _resolve_target_column(df, target_name):
+    """Resolve a target column by exact then normalized name match."""
+    if target_name in df.columns:
+        return target_name
+
+    normalized = {str(col).replace('\ufeff', '').strip().lower(): col for col in df.columns}
+    return normalized.get(str(target_name).strip().lower())
+
 def is_hex(s):
     try:
         int(s, 16)
@@ -24,20 +45,20 @@ def load_data(obj, idx=None):
         idx = input("Select dataset (1: RBA, 2: WPD, 3: PEHF, 4: RISS): ").strip()
     
     if idx == '1' :
-        df = pd.read_excel(obj.data_path)
-        target_col = 'Family'
+        df = _normalize_columns(_read_excel_safe(obj.data_path))
+        target_col = _resolve_target_column(df, 'Family')
         encodes =  ['EntryPoint', 'PEType', 'magic_number', 'bytes_on_last_page', 'pages_in_file', 'relocations', 'size_of_header', 'min_extra_paragraphs', 'max_extra_paragraphs', 'init_ss_value', 'init_sp_value', 'init_ip_value', 'init_cs_value', 'over_lay_number', 'oem_identifier', 'address_of_ne_header', 'Magic', 'SizeOfCode', 'SizeOfInitializedData', 'SizeOfUninitializedData', 'AddressOfEntryPoint', 'BaseOfCode', 'BaseOfData', 'ImageBase', 'SectionAlignment', 'FileAlignment', 'OperatingSystemVersion', 'ImageVersion', 'SizeOfImage', 'SizeOfHeaders', 'Checksum', 'Subsystem', 'SizeofStackReserve', 'SizeofStackCommit', 'SizeofHeapCommit', 'SizeofHeapReserve', 'LoaderFlags', 'text_VirtualSize', 'text_VirtualAddress', 'text_SizeOfRawData', 'text_PointerToRawData', 'text_PointerToRelocations', 'text_PointerToLineNumbers', 'rdata_VirtualSize', 'rdata_VirtualAddress', 'rdata_SizeOfRawData', 'rdata_PointerToRawData', 'rdata_PointerToRelocations', 'rdata_PointerToLineNumbers', 'rdata_Characteristics']
         drops = ['md5', 'sha1', 'file_extension', 'MachineType', 'DllCharacteristics', 'text_Characteristics', 'Class', 'Category']
     elif idx == '2' :
-        df = pd.read_excel(obj.data_path)
-        target_col = 'Benign'
+        df = _normalize_columns(_read_excel_safe(obj.data_path))
+        target_col = _resolve_target_column(df, 'Benign')
         encodes = []
         drops = ['FileName', 'md5Hash']
     elif idx == '3' :
         df = pd.read_csv(obj.data_path)
         target_col = 'GR'
         encodes = []
-        drops = ['filename']
+        drops = ['ID','filename']
     elif idx == '4':
         # RISS dataset — no header row, last column is the target label
         df = pd.read_csv(obj.data_path, header=None)
@@ -51,7 +72,7 @@ def load_data(obj, idx=None):
         if file_path.endswith(".csv"):
             df = pd.read_csv(file_path)
         elif file_path.endswith(".xlsx"):
-            df = pd.read_excel(file_path)
+            df = _normalize_columns(_read_excel_safe(file_path))
         else:
             raise ValueError("Unsupported file format. Please provide a .csv or .xlsx file.")
         print("Columns:")
@@ -77,6 +98,9 @@ def load_data(obj, idx=None):
     
 
     
+    if target_col is None or target_col not in df.columns:
+        raise KeyError(f"Target column not found. Resolved target={target_col}. Available columns: {list(df.columns)}")
+
     X = df.drop(columns=[target_col])
     y = df[target_col]
 
@@ -89,7 +113,8 @@ def load_data(obj, idx=None):
         le_target = LabelEncoder()
         X[enc] = le_target.fit_transform(X[enc].astype(str) )
     for drop in drops:
-        X = X.drop(columns=[drop])
+        if drop in X.columns:
+            X = X.drop(columns=[drop])
     # for col in columns:
     #     if X[col].apply(is_hex).all():
     #         # Convert entire column to numeric
@@ -124,6 +149,9 @@ def load_data(obj, idx=None):
     obj.X_train = obj.scaler.fit_transform(obj.X_train)
     obj.X_val = obj.scaler.transform(obj.X_val)
     obj.X_test = obj.scaler.transform(obj.X_test)
+    obj.X_train = obj.smootheringScaler.fit_transform(obj.X_train)
+    obj.X_val = obj.smootheringScaler.transform(obj.X_val)
+    obj.X_test = obj.smootheringScaler.transform(obj.X_test)
 
     # ── Feature selection for RISS (16 380 features → manageable subset) ────────
     # Without this the model has ~1 M params for 1 067 samples → extreme overfit.
