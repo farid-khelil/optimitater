@@ -33,7 +33,6 @@ def create_mlp_model(obj, n_dense_layers=2, dense_units=[52,64], dropout_rate=0.
         # batch_size_idx = individual[10] # Index du batch size
         
         # Mappage des index aux valeurs réelles
-        
         model = Sequential()
         
         # Première couche avec input_shape

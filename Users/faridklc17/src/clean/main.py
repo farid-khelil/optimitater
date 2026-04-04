@@ -18,7 +18,7 @@ from sklearn.metrics import accuracy_score
 from tensorflow.keras.callbacks import EarlyStopping
 import datetime
 import atexit
-
+from GWO import GrayWolfOptimizer
 # ── Environment detection ─────────────────────────────────────────────────
 import os, sys
 ON_KAGGLE   = os.path.isdir('/kaggle/working')
@@ -109,7 +109,9 @@ class MODEL:
         self.generations = 1
         self.crossover_prob = 0.85
         self.mutation_prob = 0.15
-
+        # Paramètres GWO optimisés pour portabilité
+        self.target_evaluations = 20
+        self.pop_size = 5
         # Meilleurs résultats
         self.best_individual = None
         self.best_fitness = 0
@@ -153,25 +155,27 @@ load_data(obj, idx='3')
 # load_and_preprocess_data(obj)
 
 # 3 layers: 256 → 128 → 64  (consistent n_dense_layers=3 / dense_units length)
-obj.model = create_cnn_model(
-     obj=obj,
- )
+# obj.model = create_cnn_model(
+#     obj=obj,
+# )
+GrayWolfOptimizer(obj,test='LSTM', target_evaluations=obj.target_evaluations, pop_size=obj.pop_size)
+evaluate_best_model(obj, test='LSTM')
+display_results(obj, execution_time=0, test='LSTM', method='GWO')
 
+# early_stop = EarlyStopping(
+#     monitor='val_loss',
+#     patience=10,
+#     restore_best_weights=True,
+#     verbose=1
+# )
 
-early_stop = EarlyStopping(
-    monitor='val_loss',
-    patience=10,
-    restore_best_weights=True,
-    verbose=1
-)
-
-history = obj.model.fit(
-    obj.X_train, obj.y_train,
-    validation_data=(obj.X_val, obj.y_val),
-    epochs=100,
-    batch_size=32,
-    callbacks=[early_stop],
-)
+# history = obj.model.fit(
+#     obj.X_train, obj.y_train,
+#     validation_data=(obj.X_val, obj.y_val),
+#     epochs=100,
+#     batch_size=32,
+#     callbacks=[early_stop],
+# )
 # test_model(obj)
 # ── run GA on ALL models, rank, chart & log ───────────────────────────────
 # compare_all_models(obj)

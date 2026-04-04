@@ -1,16 +1,33 @@
-def display_results(self, execution_time,test='MLP'):
+def display_results(self, execution_time,test='MLP',method='GA'):
         """Affichage des résultats finaux"""
         print("\n" + "="*80)
-        print(f"🎊 RÉSULTATS DE L'OPTIMISATION {test} AVEC ALGORITHME GÉNÉTIQUE")
+        print(f"🎊 RÉSULTATS DE L'OPTIMISATION {test} AVEC ALGORITHME {method}")
         print("="*80)
-        
-        # Paramètres GA
-        print(f"🧬 PARAMÈTRES ALGORITHME GÉNÉTIQUE:")
-        print(f"   • Générations: {self.generations}")
-        print(f"   • Taille population: {self.population_size}")
-        print(f"   • Probabilité croisement: {self.crossover_prob}")
-        print(f"   • Probabilité mutation: {self.mutation_prob}")
-        print(f"   • Temps d'exécution: {execution_time:.2f} secondes")
+        if method == 'GA':
+                # Paramètres GA
+                print(f"🧬 PARAMÈTRES ALGORITHME GÉNÉTIQUE:")
+                print(f"   • Générations: {self.generations}")
+                print(f"   • Taille population: {self.population_size}")
+                print(f"   • Probabilité croisement: {self.crossover_prob}")
+                print(f"   • Probabilité mutation: {self.mutation_prob}")
+                print(f"   • Temps d'exécution: {execution_time:.2f} secondes")
+        elif method == 'GWO':
+                print(f"🐺 PARAMÈTRES GRAY WOLF OPTIMIZER:")
+                print(f"   • Temps d'exécution: {execution_time:.2f} secondes")
+                if hasattr(self, 'gwo_tested_solutions'):
+                        print(f"   • Solutions testées: {len(self.gwo_tested_solutions)}")
+                if getattr(self, 'gwo_alpha', None) is not None:
+                        print(f"   • Alpha score: {self.gwo_alpha.get('score', 'N/A')}")
+                        alpha_dec = self.gwo_alpha.get('decoded', {}) or {}
+                        if alpha_dec:
+                                print(f"   • Alpha params: {alpha_dec}")
+                if getattr(self, 'gwo_beta', None) is not None:
+                        print(f"   • Beta score: {self.gwo_beta.get('score', 'N/A')}")
+                        beta_dec = self.gwo_beta.get('decoded', {}) or {}
+                        if beta_dec:
+                                print(f"   • Beta params: {beta_dec}")
+                if getattr(self, 'gwo_delta', None) is not None:
+                        print(f"   • Delta score: {self.gwo_delta.get('score', 'N/A')}")
         
         # Meilleur paramétrage
         if test == 'MLP':
