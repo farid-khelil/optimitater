@@ -8,6 +8,8 @@ from RNN import create_rnn_model
 from mealpy.utils.problem import Problem
 from mealpy.utils.space import IntegerVar, FloatVar, CategoricalVar
 from tensorflow.keras.callbacks import EarlyStopping
+import tensorflow as tf
+import gc
 
 
 def _print_section(title):
@@ -289,35 +291,60 @@ def GrayWolfOptimizer(obj,test='MLP', target_evaluations=500, pop_size=15):
         decoded = _decode_solution(solution, test=test)
         batch_size = decoded["batch_size"]
 
-        model = _make_model(obj=obj, decoded=decoded, test=test)
-
+        model = None
+        history = None
         x_train_fit, x_val_fit = obj.X_train, obj.X_val
-        if test in ['RNN', 'LSTM'] and len(obj.X_train.shape) == 2:
-            x_train_fit = obj.X_train.reshape((-1, 1, obj.n_features))
-            x_val_fit = obj.X_val.reshape((-1, 1, obj.n_features))
-        elif test == 'CNN' and len(obj.X_train.shape) == 2:
-            x_train_fit = obj.X_train.reshape((-1, obj.n_features, 1))
-            x_val_fit = obj.X_val.reshape((-1, obj.n_features, 1))
-    
-        # --- Train with fixed epochs and early stopping ---
-        early_stopping = EarlyStopping(
-                monitor='val_accuracy',
-                patience=5,
-                restore_best_weights=True,
-                verbose=0
-        )
+        val_acc = 0.0
 
-        history = model.fit(
-            x_train_fit, obj.y_train,
-            validation_data=(x_val_fit, obj.y_val),
-            epochs=100,
-            batch_size=int(batch_size),
-            callbacks=[early_stopping],
-            verbose=0
-        )
-    
-        # --- Fitness: maximize val_accuracy, GWO minimizes → return negative ---
-        val_acc = max(history.history['val_accuracy'])
+        try:
+            # Clear old graph/tensors before building a new candidate model
+            tf.keras.backend.clear_session()
+
+            model = _make_model(obj=obj, decoded=decoded, test=test)
+
+            if test in ['RNN', 'LSTM'] and len(obj.X_train.shape) == 2:
+                x_train_fit = obj.X_train.reshape((-1, 1, obj.n_features))
+                x_val_fit = obj.X_val.reshape((-1, 1, obj.n_features))
+            elif test == 'CNN' and len(obj.X_train.shape) == 2:
+                x_train_fit = obj.X_train.reshape((-1, obj.n_features, 1))
+                x_val_fit = obj.X_val.reshape((-1, obj.n_features, 1))
+
+            # --- Train with fixed epochs and early stopping ---
+            early_stopping = EarlyStopping(
+                    monitor='val_accuracy',
+                    patience=3,
+                    restore_best_weights=True,
+                    verbose=0
+            )
+
+            history = model.fit(
+                x_train_fit, obj.y_train,
+                validation_data=(x_val_fit, obj.y_val),
+                epochs=100,
+                batch_size=int(batch_size),
+                callbacks=[early_stopping],
+                verbose=0
+            )
+
+            # --- Fitness: maximize val_accuracy, GWO minimizes → return negative ---
+            val_acc = float(max(history.history.get('val_accuracy', [0.0])))
+        except Exception as e:
+            # OOM or training failure: penalize candidate and continue optimization
+            obj.gwo_last_error = str(e)
+            val_acc = 0.0
+        finally:
+            # Aggressive cleanup to avoid memory accumulation across evaluations
+            try:
+                del history
+            except Exception:
+                pass
+            try:
+                del model
+            except Exception:
+                pass
+            gc.collect()
+            tf.keras.backend.clear_session()
+
         obj.gwo_tested_solutions.append({
             "evaluation": eval_counter["n"],
             "params": decoded,
