@@ -17,7 +17,7 @@ Users/faridklc17/src/sami_LSTM_code.py
 Users/faridklc17/src/sami_MLP_code.py
 Users/faridklc17/src/MLP.ipynb
 Users/faridklc17/src/.amlignore
-Users/faridklc17/src/clean/.amlignore
-Users/faridklc17/src/clean/__pycache__/.amlignore
-Users/faridklc17/src/clean/results/*
-Users/faridklc17/src/clean/src.zip
+.amlignore
+__pycache__/.amlignore
+results/*
+src.zip

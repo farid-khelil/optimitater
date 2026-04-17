@@ -312,7 +312,7 @@ def GrayWolfOptimizer(obj,test='MLP', target_evaluations=500, pop_size=15):
             # --- Train with fixed epochs and early stopping ---
             early_stopping = EarlyStopping(
                     monitor='val_accuracy',
-                    patience=3,
+                    patience=5,
                     restore_best_weights=True,
                     verbose=0
             )

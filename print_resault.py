@@ -95,7 +95,6 @@ def display_results(self, execution_time,test='MLP',method='GA'):
                 print(f"   • Époques: {best_params['epochs']}")
         # Fitness et métriques
         print(f"\n📊 PERFORMANCE DU MEILLEUR MODÈLE:")
-        print(f"   • Fitness (Recall): {self.best_fitness:.4f}")
         print(f"   • Accuracy: {self.best_metrics['accuracy']:.4f}")
         print(f"   • Precision: {self.best_metrics['precision']:.4f}")
         print(f"   • Recall: {self.best_metrics['recall']:.4f}")

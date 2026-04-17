@@ -24,7 +24,7 @@ import os, sys
 ON_KAGGLE   = os.path.isdir('/kaggle/working')
 BASE_OUT    = '/kaggle/working'                  if ON_KAGGLE else '/home/farid/pfe'
 DATA_ROOT   = '/kaggle/input'                    if ON_KAGGLE else '/home/farid/pfe/data/processed'
-RISS_PATH   = f'{DATA_ROOT}/riss-dataset/RISS.csv' if ON_KAGGLE else f'{DATA_ROOT}/ransomware/PEHF.csv'
+RISS_PATH   = f'{DATA_ROOT}/riss-dataset/RISS.csv' if ON_KAGGLE else f'{DATA_ROOT}/ransomware/WPD.xlsx'
 # ──────────────────────────────────────────────────────────────────────────
 
 class _Tee:
@@ -110,8 +110,8 @@ class MODEL:
         self.crossover_prob = 0.85
         self.mutation_prob = 0.15
         # Paramètres GWO optimisés pour portabilité
-        self.target_evaluations = 20
-        self.pop_size = 5
+        self.target_evaluations = 300
+        self.pop_size = 15
         # Meilleurs résultats
         self.best_individual = None
         self.best_fitness = 0
@@ -151,16 +151,16 @@ def test_model(self):
 # obj = MODEL('/home/azureuser/cloudfiles/code/Users/faridklc17/Ransomware_headers.xlsx')
 # obj = MODEL('/home/azureuser/cloudfiles/code/Users/faridklc17/src/RBA.xlsx')
 obj = MODEL(RISS_PATH)
-load_data(obj, idx='3')
+load_data(obj, idx='2')
 # load_and_preprocess_data(obj)
 
 # 3 layers: 256 → 128 → 64  (consistent n_dense_layers=3 / dense_units length)
 # obj.model = create_cnn_model(
 #     obj=obj,
 # )
-GrayWolfOptimizer(obj,test='LSTM', target_evaluations=obj.target_evaluations, pop_size=obj.pop_size)
-evaluate_best_model(obj, test='LSTM')
-display_results(obj, execution_time=0, test='LSTM', method='GWO')
+GrayWolfOptimizer(obj,test='MLP', target_evaluations=obj.target_evaluations, pop_size=obj.pop_size)
+evaluate_best_model(obj, test='MLP')
+display_results(obj, execution_time=0, test='MLP', method='GWO')
 
 # early_stop = EarlyStopping(
 #     monitor='val_loss',

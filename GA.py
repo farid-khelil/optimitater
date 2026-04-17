@@ -67,7 +67,6 @@ def get_rnn_param(toolbox):
     toolbox.register("optimizer", random.randint, 0, 2)
     toolbox.register("activation", random.choice, ['relu', 'elu', 'selu', 'tanh'])
     toolbox.register("batch_size", random.choice, [16, 32, 64, 128])
-    toolbox.register("n_epochs", random.choice, [50, 100, 150])
 
     toolbox.register("individual", tools.initCycle, creator.Individual,
                         (toolbox.n_rnn_layers,
