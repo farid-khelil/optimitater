@@ -10,15 +10,86 @@ from tensorflow.keras.callbacks import EarlyStopping
 from eval import evaluate_individual
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Unified AutoML search space
+# Chromosome:
+# [model_type, learning_rate, batch_size, epochs, neurons, filters, kernel_size, units]
+# model_type: 0=MLP, 1=CNN, 2=LSTM, 3=RNN, 4=DNN
+# ─────────────────────────────────────────────────────────────────────────────
+MODEL_TYPE_MAP = {
+    0: "MLP",
+    1: "CNN",
+    2: "LSTM",
+    3: "RNN",
+    4: "DNN",
+}
+
+AUTO_BATCH_SIZES = [16, 32, 64, 128]
+AUTO_KERNEL_SIZES = [3, 5, 7]
+
+AUTO_BOUNDS = {
+    "learning_rate": (1e-5, 1e-2),
+    "epochs": (20, 300),
+    "neurons": (16, 512),
+    "filters": (16, 256),
+    "units": (16, 512),
+}
+
+
+def _clip(value, low, high):
+    return max(low, min(high, value))
+
+
+def decode_automl_individual(individual):
+    return {
+        "model_type": int(individual[0]),
+        "model_name": MODEL_TYPE_MAP.get(int(individual[0]), "UNKNOWN"),
+        "learning_rate": float(individual[1]),
+        "batch_size": int(individual[2]),
+        "epochs": int(individual[3]),
+        "neurons": int(individual[4]),
+        "filters": int(individual[5]),
+        "kernel_size": int(individual[6]),
+        "units": int(individual[7]),
+    }
+
+
+def get_automl_param(toolbox):
+    toolbox.register("model_type", random.randint, 0, 4)
+    toolbox.register("learning_rate", random.uniform, AUTO_BOUNDS["learning_rate"][0], AUTO_BOUNDS["learning_rate"][1])
+    toolbox.register("batch_size", random.choice, AUTO_BATCH_SIZES)
+    toolbox.register("epochs", random.randint, AUTO_BOUNDS["epochs"][0], AUTO_BOUNDS["epochs"][1])
+    toolbox.register("neurons", random.randint, AUTO_BOUNDS["neurons"][0], AUTO_BOUNDS["neurons"][1])
+    toolbox.register("filters", random.randint, AUTO_BOUNDS["filters"][0], AUTO_BOUNDS["filters"][1])
+    toolbox.register("kernel_size", random.choice, AUTO_KERNEL_SIZES)
+    toolbox.register("units", random.randint, AUTO_BOUNDS["units"][0], AUTO_BOUNDS["units"][1])
+
+    toolbox.register(
+        "individual",
+        tools.initCycle,
+        creator.Individual,
+        (
+            toolbox.model_type,
+            toolbox.learning_rate,
+            toolbox.batch_size,
+            toolbox.epochs,
+            toolbox.neurons,
+            toolbox.filters,
+            toolbox.kernel_size,
+            toolbox.units,
+        ),
+        n=1,
+    )
+
+
 def get_mlp_param(toolbox):
     toolbox.register("n_dense_layers", random.randint, 1, 5)
-    toolbox.register("dense_units", random.choice, [64, 128, 256, 512])
-    toolbox.register("dropout_rate", random.choice, [0.2, 0.3, 0.5])
-    toolbox.register("learning_rate", random.choice, [0.001, 0.01, 0.1])
+    toolbox.register("dense_units", random.choice, [32, 64, 128, 256, 512])
+    toolbox.register("dropout_rate", random.choice, [0.0, 0.1, 0.2, 0.3, 0.4, 0.5])
+    toolbox.register("learning_rate", random.choice, [0.0001, 0.0005, 0.001, 0.005, 0.01])
     toolbox.register("optimizer", random.randint, 0, 2)
-    toolbox.register("activation", random.choice, ['relu', 'elu', 'selu', 'tanh'])
+    toolbox.register("activation", random.choice, ['relu', 'tanh', 'sigmoid', 'leaky_relu'])
     toolbox.register("batch_size", random.choice, [16, 32, 64, 128])
-    toolbox.register("n_epochs", random.choice, [50, 100, 150])
 
     toolbox.register("individual", tools.initCycle, creator.Individual,
                         (toolbox.n_dense_layers, 
@@ -27,19 +98,18 @@ def get_mlp_param(toolbox):
                          toolbox.learning_rate,
                          toolbox.optimizer,
                          toolbox.activation,
-                         toolbox.batch_size,
-                         toolbox.n_epochs), n=1)
+                         toolbox.batch_size), n=1)
 def get_cnn_param(toolbox):
     toolbox.register("n_conv_layers", random.choice, [1, 2, 3])
-    toolbox.register("conv_filters", random.choice, [32, 64, 128])
-    toolbox.register("kernel_sizes", random.choice, [1, 2, 3])
-    toolbox.register("pool_sizes", random.choice, [2, 4, 8])
-    toolbox.register("n_dense_layers", random.choice, [1, 2, 3, 4, 5])
-    toolbox.register("dense_units", random.choice, [64, 128, 256, 512])
+    toolbox.register("conv_filters", random.choice, [16, 32, 64, 128])
+    toolbox.register("kernel_sizes", random.choice, [3, 5, 7])
+    toolbox.register("pool_sizes", random.choice, [2, 4])
+    toolbox.register("n_dense_layers", random.choice, [1, 2, 3])
+    toolbox.register("dense_units", random.choice, [32, 64, 128, 256])
     toolbox.register("dropout_rate", random.choice, [0.0, 0.1, 0.2, 0.3, 0.5])
-    toolbox.register("learning_rate", random.choice, [0.0001, 0.001, 0.005, 0.01, 0.05])
+    toolbox.register("learning_rate", random.choice, [0.0001, 0.0005, 0.001, 0.005, 0.01])
     toolbox.register("optimizer", random.randint, 0, 2)
-    toolbox.register("activation", random.choice, ['relu', 'elu', 'selu', 'tanh'])
+    toolbox.register("activation", random.choice, ['relu', 'tanh', 'sigmoid', 'leaky_relu'])
     toolbox.register("batch_size", random.choice,[16, 32, 64, 128])
     toolbox.register("n_epochs", random.choice, [50, 100, 150])
 
@@ -83,9 +153,9 @@ def get_dnn_param(toolbox):
     toolbox.register("n_hidden_layers", random.choice, [1, 2, 3, 4, 5])
     toolbox.register("hidden_units", random.choice, [32, 64, 128, 256, 512])
     toolbox.register("dropout_rate", random.choice, [0.0, 0.1, 0.2, 0.3, 0.5])
-    toolbox.register("learning_rate", random.choice, [0.0001, 0.001, 0.005, 0.01, 0.05])
+    toolbox.register("learning_rate", random.choice, [0.0001, 0.0005, 0.001, 0.005, 0.01])
     toolbox.register("optimizer_idx", random.choice, [0, 1, 2])
-    toolbox.register("activation", random.choice, ['relu', 'elu', 'selu', 'tanh'])
+    toolbox.register("activation", random.choice, ['relu', 'tanh', 'sigmoid', 'leaky_relu'])
     toolbox.register("batch_size", random.choice, [16, 32, 64])
     toolbox.register("n_epochs", random.choice, [50, 100, 150])
 
@@ -102,14 +172,14 @@ def get_dnn_param(toolbox):
 
 def get_lstm_param(toolbox):
     toolbox.register("n_lstm_layers", random.choice, [1, 2, 3])
-    toolbox.register("lstm_units", random.choice, [32, 64, 128])
+    toolbox.register("lstm_units", random.choice, [32, 64, 128, 256])
     toolbox.register("dropout_rate", random.choice, [0.0, 0.1, 0.2, 0.3, 0.5])
     toolbox.register("rec_dropout_rate", random.choice, [0.0, 0.1, 0.2])
     toolbox.register("n_dense_layers", random.choice, [1, 2, 3])
-    toolbox.register("dense_units", random.choice, [64, 128, 256])
-    toolbox.register("learning_rate", random.choice, [0.0001, 0.001, 0.005, 0.01, 0.05])
+    toolbox.register("dense_units", random.choice, [32, 64, 128, 256])
+    toolbox.register("learning_rate", random.choice, [0.0001, 0.0005, 0.001, 0.005, 0.01])
     toolbox.register("optimizer_idx", random.choice, [0, 1, 2])
-    toolbox.register("activation", random.choice, ['relu', 'elu', 'selu', 'tanh'])
+    toolbox.register("activation", random.choice, ['relu', 'tanh', 'sigmoid', 'leaky_relu'])
     toolbox.register("batch_size", random.choice, [16, 32, 64])
     toolbox.register("n_epochs", random.choice, [50, 100, 150])
     toolbox.register("individual", tools.initCycle, creator.Individual,
@@ -125,7 +195,7 @@ def get_lstm_param(toolbox):
                                  toolbox.batch_size,
                                  toolbox.n_epochs), n=1)
     
-def setup_genetic_algorithm(self, test='MLP'):
+def setup_genetic_algorithm(self, test='AUTOML'):
         """Configuration de l'AG sans parallélisme"""
         # Création des types  (guard: re-creating them crashes DEAP on second call)
         if not hasattr(creator, "FitnessMax"):
@@ -135,7 +205,9 @@ def setup_genetic_algorithm(self, test='MLP'):
         
         toolbox = base.Toolbox()
         
-        if test == 'RNN':
+        if test in ('AUTOML', 'AUTO', 'ALL', 'UNIFIED'):
+            get_automl_param(toolbox)
+        elif test == 'RNN':
             get_rnn_param(toolbox)
         elif test == 'MLP':
             get_mlp_param(toolbox)
@@ -155,7 +227,9 @@ def setup_genetic_algorithm(self, test='MLP'):
         toolbox.register("evaluate", evaluate_individual, self, test=test)
         toolbox.register("mate", tools.cxTwoPoint)
         # toolbox.evaluate()
-        if test == 'RNN':
+        if test in ('AUTOML', 'AUTO', 'ALL', 'UNIFIED'):
+            toolbox.register("mutate", custom_automl_mutation, self)
+        elif test == 'RNN':
             toolbox.register("mutate", custom_rnn_mutation, self)
         elif test == 'MLP':
             toolbox.register("mutate", custom_mlp_mutation, self)
@@ -169,6 +243,53 @@ def setup_genetic_algorithm(self, test='MLP'):
         
         return toolbox
 
+
+def custom_automl_mutation(self, individual):
+    """Type-aware mutation for unified AutoML chromosome."""
+    if random.random() < self.mutation_prob:
+        gene_idx = random.randint(0, len(individual) - 1)
+
+        # model_type
+        if gene_idx == 0:
+            current = int(individual[0])
+            choices = [m for m in [0, 1, 2, 3, 4] if m != current]
+            individual[0] = random.choice(choices)
+
+        # learning_rate (continuous)
+        elif gene_idx == 1:
+            lr = float(individual[1]) * random.uniform(0.5, 1.5)
+            individual[1] = _clip(lr, AUTO_BOUNDS["learning_rate"][0], AUTO_BOUNDS["learning_rate"][1])
+
+        # batch_size (discrete)
+        elif gene_idx == 2:
+            individual[2] = random.choice(AUTO_BATCH_SIZES)
+
+        # epochs (+/- 1..5)
+        elif gene_idx == 3:
+            delta = random.randint(1, 5)
+            if random.random() < 0.5:
+                delta = -delta
+            epochs = int(individual[3]) + delta
+            individual[3] = int(_clip(epochs, AUTO_BOUNDS["epochs"][0], AUTO_BOUNDS["epochs"][1]))
+
+        # neurons / filters / units (+/-32)
+        elif gene_idx == 4:
+            val = int(individual[4]) + random.randint(-32, 32)
+            individual[4] = int(_clip(val, AUTO_BOUNDS["neurons"][0], AUTO_BOUNDS["neurons"][1]))
+        elif gene_idx == 5:
+            val = int(individual[5]) + random.randint(-32, 32)
+            individual[5] = int(_clip(val, AUTO_BOUNDS["filters"][0], AUTO_BOUNDS["filters"][1]))
+
+        # kernel_size
+        elif gene_idx == 6:
+            individual[6] = random.choice(AUTO_KERNEL_SIZES)
+
+        elif gene_idx == 7:
+            val = int(individual[7]) + random.randint(-32, 32)
+            individual[7] = int(_clip(val, AUTO_BOUNDS["units"][0], AUTO_BOUNDS["units"][1]))
+
+    return individual,
+
 def custom_mlp_mutation(self, individual):
         """Mutation personnalisée pour MLP"""
         if random.random() < self.mutation_prob:
@@ -177,19 +298,17 @@ def custom_mlp_mutation(self, individual):
             if gene_idx == 0:  # n_dense_layers
                 individual[gene_idx] = random.randint(1, 5)
             elif gene_idx in range(1, 6):  # dense_units
-                individual[gene_idx] = random.choice([64, 128, 256, 512])
+                individual[gene_idx] = random.choice([32, 64, 128, 256, 512])
             elif gene_idx == 6:  # dropout_rate
-                individual[gene_idx] = random.choice([0.2, 0.3, 0.5])
+                individual[gene_idx] = random.choice([0.0, 0.1, 0.2, 0.3, 0.4, 0.5])
             elif gene_idx == 7:  # learning_rate
-                individual[gene_idx] = random.choice([0.001, 0.01, 0.1])
+                individual[gene_idx] = random.choice([0.0001, 0.0005, 0.001, 0.005, 0.01])
             elif gene_idx == 8:  # optimizer
                 individual[gene_idx] = random.randint(0, 2)
             elif gene_idx == 9:  # activation
-                individual[gene_idx] = random.choice(['relu', 'elu', 'selu', 'tanh'])
+                individual[gene_idx] = random.choice(['relu', 'tanh', 'sigmoid', 'leaky_relu'])
             elif gene_idx == 10:  # batch_size
                 individual[gene_idx] = random.choice([16, 32, 64, 128])
-            elif gene_idx == 11:  # n_epochs
-                individual[gene_idx] = random.choice([50, 100, 150])
         
         return individual,
 
@@ -202,23 +321,23 @@ def custom_cnn_mutation(self, individual):
         if gene_idx == 0:  # n_conv_layers
             individual[gene_idx] = random.choice([1, 2, 3])
         elif gene_idx in range(1, 4):  # conv_filters
-            individual[gene_idx] = random.choice([32, 64, 128])
+            individual[gene_idx] = random.choice([16, 32, 64, 128])
         elif gene_idx in range(4, 7):  # kernel_sizes
-            individual[gene_idx] = random.choice([1, 2, 3])
+            individual[gene_idx] = random.choice([3, 5, 7])
         elif gene_idx in range(7, 10):  # pool_sizes
-            individual[gene_idx] = random.choice([2, 4, 8])
+            individual[gene_idx] = random.choice([2, 4])
         elif gene_idx == 10:  # n_dense_layers
-            individual[gene_idx] = random.choice([1, 2, 3, 4, 5])
+            individual[gene_idx] = random.choice([1, 2, 3])
         elif gene_idx in range(11, 16):  # dense_units
-            individual[gene_idx] = random.choice([64, 128, 256, 512])
+            individual[gene_idx] = random.choice([32, 64, 128, 256])
         elif gene_idx == 16:  # dropout_rate
             individual[gene_idx] = random.choice([0.0, 0.1, 0.2, 0.3, 0.5])
         elif gene_idx == 17:  # learning_rate
-            individual[gene_idx] = random.choice([0.0001, 0.001, 0.005, 0.01, 0.05])
+            individual[gene_idx] = random.choice([0.0001, 0.0005, 0.001, 0.005, 0.01])
         elif gene_idx == 18:  # optimizer
             individual[gene_idx] = random.randint(0,2)
         elif gene_idx == 19:  # activation1
-            individual[gene_idx] = random.choice(['relu', 'elu', 'selu', 'tanh'])
+            individual[gene_idx] = random.choice(['relu', 'tanh', 'sigmoid', 'leaky_relu'])
         elif gene_idx == 20:  # batch_size
             individual[gene_idx] = random.choice([16, 32, 64, 128])
         elif gene_idx == 21:  # n_epochs
@@ -276,11 +395,11 @@ def custom_dnn_mutation(self, individual):
         elif gene_idx == 6:                     # dropout_rate
             individual[gene_idx] = random.choice([0.0, 0.1, 0.2, 0.3, 0.5])
         elif gene_idx == 7:                     # learning_rate
-            individual[gene_idx] = random.choice([0.0001, 0.001, 0.005, 0.01, 0.05])
+            individual[gene_idx] = random.choice([0.0001, 0.0005, 0.001, 0.005, 0.01])
         elif gene_idx == 8:                     # optimizer_idx
             individual[gene_idx] = random.choice([0, 1, 2])
         elif gene_idx == 9:                     # activation (string)
-            individual[gene_idx] = random.choice(['relu', 'elu', 'selu', 'tanh'])
+            individual[gene_idx] = random.choice(['relu', 'tanh', 'sigmoid', 'leaky_relu'])
         elif gene_idx == 10:                    # batch_size
             individual[gene_idx] = random.choice([16, 32, 64])
         elif gene_idx == 11:                    # n_epochs
@@ -294,7 +413,7 @@ def custom_lstm_mutation(self, individual):
         if gene_idx == 0:  # n_lstm_layers
             individual[gene_idx] = random.choice([1, 2, 3])
         elif gene_idx in range(1, 4):  # lstm_units
-            individual[gene_idx] = random.choice([32, 64, 128])
+            individual[gene_idx] = random.choice([32, 64, 128, 256])
         elif gene_idx == 4:  # dropout_rate
             individual[gene_idx] = random.choice([0.0, 0.1, 0.2, 0.3, 0.5])
         elif gene_idx == 5:  # rec_dropout_rate
@@ -302,13 +421,13 @@ def custom_lstm_mutation(self, individual):
         elif gene_idx == 6:  # n_dense_layers
             individual[gene_idx] = random.choice([1, 2, 3])
         elif gene_idx in range(7, 10):  # dense_units
-            individual[gene_idx] = random.choice([64, 128, 256])
+            individual[gene_idx] = random.choice([32, 64, 128, 256])
         elif gene_idx == 10:  # learning_rate
-            individual[gene_idx] = random.choice([0.0001, 0.001, 0.005, 0.01, 0.05])
+            individual[gene_idx] = random.choice([0.0001, 0.0005, 0.001, 0.005, 0.01])
         elif gene_idx == 11:  # optimizer_idx
             individual[gene_idx] = random.choice([0, 1, 2])
         elif gene_idx == 12:  # activation
-            individual[gene_idx] = random.choice(['relu', 'elu', 'selu', 'tanh'])
+            individual[gene_idx] = random.choice(['relu', 'tanh', 'sigmoid', 'leaky_relu'])
         elif gene_idx == 13:  # batch_size
             individual[gene_idx] = random.choice([16, 32, 64])
         elif gene_idx == 14:  # n_epochs
@@ -318,52 +437,110 @@ def custom_lstm_mutation(self, individual):
     
 
 
-def run_ga_optimization(self, test='MLP'):
-        """Exécution de l'optimisation en séquentiel"""
-        start_time = time.time()
-        if test == 'RNN' or test == 'LSTM':
-            self.X_train = self.X_train.reshape(self.X_train.shape[0], 1, self.X_train.shape[1])
-            self.X_val = self.X_val.reshape(self.X_val.shape[0], 1, self.X_val.shape[1])
-            self.X_test = self.X_test.reshape(self.X_test.shape[0], 1, self.X_test.shape[1])
+def run_ga_optimization(self, test='AUTOML'):
+    """Exécution de l'optimisation en séquentiel"""
+    start_time = time.time()
+    automl_mode = test in ('AUTOML', 'AUTO', 'ALL', 'UNIFIED')
 
+    if automl_mode:
+        # populated during evaluate_individual() calls
+        self._automl_best_by_model = {}
 
-        # Configuration GA
-        toolbox = setup_genetic_algorithm(self, test=test)
-        
-        # Population initiale
-        population = toolbox.population(n=self.population_size)
-        
-        # Statistiques
-        stats = tools.Statistics(lambda ind: ind.fitness.values)
-        stats.register("avg", np.mean)
-        stats.register("std", np.std)
-        stats.register("min", np.min)
-        stats.register("max", np.max)
-        
-        # Hall of Fame
-        hall_of_fame = tools.HallOfFame(1)
-        
-        # Évolution (séquentielle)
-        population, logbook = algorithms.eaSimple(
-            population, toolbox,
-            cxpb=self.crossover_prob,
-            mutpb=self.mutation_prob,
-            ngen=self.generations,
-            stats=stats,
-            halloffame=hall_of_fame,
-            verbose=True
-        )
-        
-        execution_time =  time.time() - start_time
+    if (test == 'RNN' or test == 'LSTM') and not automl_mode:
+        self.X_train = self.X_train.reshape(self.X_train.shape[0], 1, self.X_train.shape[1])
+        self.X_val = self.X_val.reshape(self.X_val.shape[0], 1, self.X_val.shape[1])
+        self.X_test = self.X_test.reshape(self.X_test.shape[0], 1, self.X_test.shape[1])
 
-        # Store logbook for per-generation charts
-        self.logbook = logbook
+    # Configuration GA
+    toolbox = setup_genetic_algorithm(self, test=test)
 
-        # Meilleur individu
+    # Population initiale
+    population = toolbox.population(n=self.population_size)
+
+    # Statistiques
+    stats = tools.Statistics(lambda ind: ind.fitness.values)
+    stats.register("avg", np.mean)
+    stats.register("std", np.std)
+    stats.register("min", np.min)
+    stats.register("max", np.max)
+
+    # Hall of Fame
+    hall_of_fame = tools.HallOfFame(1)
+
+    # Évolution (séquentielle)
+    population, logbook = algorithms.eaSimple(
+        population, toolbox,
+        cxpb=self.crossover_prob,
+        mutpb=self.mutation_prob,
+        ngen=self.generations,
+        stats=stats,
+        halloffame=hall_of_fame,
+        verbose=True
+    )
+
+    execution_time = time.time() - start_time
+
+    # Store logbook for per-generation charts
+    self.logbook = logbook
+
+    if automl_mode:
+        # Unique-model final selection: best tested individual per model type
+        per_model = []
+        for model_type, entry in getattr(self, '_automl_best_by_model', {}).items():
+            ind = entry['individual']
+            fit = float(entry['fitness'])
+            per_model.append({
+                "model_type": int(model_type),
+                "individual": ind,
+                "fitness": fit,
+                "params": decode_automl_individual(ind),
+            })
+
+        per_model_sorted = sorted(per_model, key=lambda x: x['fitness'], reverse=True)
+        top_k = per_model_sorted[:5]
+
+        self.top_k_individuals = [item["individual"] for item in top_k]
+        self.top_k_results = [
+            {
+                "rank": idx + 1,
+                "fitness": item["fitness"],
+                "params": item["params"],
+            }
+            for idx, item in enumerate(top_k)
+        ]
+
+        # Best remains rank-1 for compatibility
+        if top_k:
+            self.best_individual = top_k[0]["individual"]
+            self.best_fitness = float(top_k[0]["fitness"])
+        else:
+            # Fallback (should not happen): keep previous behavior
+            sorted_population = sorted(population, key=lambda ind: ind.fitness.values[0], reverse=True)
+            self.best_individual = sorted_population[0]
+            self.best_fitness = float(self.best_individual.fitness.values[0])
+    else:
+        # Meilleur individu (legacy mode)
         self.best_individual = hall_of_fame[0]
         self.best_fitness = self.best_individual.fitness.values[0]
-        
-        print(f"⏱️ Temps d'exécution: {execution_time:.2f} secondes")
-        print(f"🏆 Meilleur fitness (recall): {self.best_fitness:.4f}")
-        
-        return execution_time
+
+    print(f"⏱️ Temps d'exécution: {execution_time:.2f} secondes")
+    metric_name = "validation F1-score" if automl_mode else "recall"
+    print(f"🏆 Meilleur fitness ({metric_name}): {self.best_fitness:.4f}")
+
+    if automl_mode and hasattr(self, "top_k_results"):
+        print("\nTop Results (best unique model types tested):")
+        for item in self.top_k_results:
+            p = item["params"]
+            print(
+                f"{item['rank']}. {p['model_name']} | "
+                f"lr={p['learning_rate']:.5f} | "
+                f"batch={p['batch_size']} | "
+                f"epochs={p['epochs']} | "
+                f"neurons={p['neurons']} | "
+                f"filters={p['filters']} | "
+                f"kernel={p['kernel_size']} | "
+                f"units={p['units']} | "
+                f"fitness={item['fitness']:.4f}"
+            )
+
+    return execution_time

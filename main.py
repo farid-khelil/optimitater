@@ -105,8 +105,8 @@ class MODEL:
         self.away_encoder = LabelEncoder()
 
         # Paramètres GA optimisés pour portabilité
-        self.population_size = 2
-        self.generations = 1
+        self.population_size = 5
+        self.generations = 4
         self.crossover_prob = 0.85
         self.mutation_prob = 0.15
         # Paramètres GWO optimisés pour portabilité
@@ -158,9 +158,11 @@ load_data(obj, idx='2')
 # obj.model = create_cnn_model(
 #     obj=obj,
 # )
-GrayWolfOptimizer(obj,test='MLP', target_evaluations=obj.target_evaluations, pop_size=obj.pop_size)
-evaluate_best_model(obj, test='MLP')
-display_results(obj, execution_time=0, test='MLP', method='GWO')
+# GrayWolfOptimizer(obj,test='MLP', target_evaluations=obj.target_evaluations, pop_size=obj.pop_size)
+execution_time = run_ga_optimization(obj, test='AUTOML')
+evaluate_best_model(obj, test='AUTOML')
+display_results(obj, execution_time, test='AUTOML', method='GA')
+
 
 # early_stop = EarlyStopping(
 #     monitor='val_loss',

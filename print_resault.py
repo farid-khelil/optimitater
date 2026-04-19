@@ -1,5 +1,6 @@
 def display_results(self, execution_time,test='MLP',method='GA'):
         """Affichage des résultats finaux"""
+        automl_mode = test in ('AUTOML', 'AUTO', 'ALL', 'UNIFIED')
         print("\n" + "="*80)
         print(f"🎊 RÉSULTATS DE L'OPTIMISATION {test} AVEC ALGORITHME {method}")
         print("="*80)
@@ -28,6 +29,38 @@ def display_results(self, execution_time,test='MLP',method='GA'):
                                 print(f"   • Beta params: {beta_dec}")
                 if getattr(self, 'gwo_delta', None) is not None:
                         print(f"   • Delta score: {self.gwo_delta.get('score', 'N/A')}")
+
+        if automl_mode:
+                print(f"\n🤖 RÉSUMÉ AUTOML (UN MODÈLE PAR TYPE):")
+                if hasattr(self, '_automl_best_by_model') and self._automl_best_by_model is not None:
+                        print(f"   • Types de modèles testés: {len(self._automl_best_by_model)}")
+                if hasattr(self, 'best_fitness'):
+                        print(f"   • Meilleur score validation (F1): {self.best_fitness:.4f}")
+
+                if hasattr(self, 'top_k_results') and self.top_k_results:
+                        print("\n🏆 TOP RÉSULTATS (SANS RÉPÉTITION DE MODÈLE):")
+                        for item in self.top_k_results:
+                                p = item.get('params', {})
+                                print(
+                                        f"   {item.get('rank', '?')}. {p.get('model_name', 'UNKNOWN')} | "
+                                        f"lr={p.get('learning_rate', 'N/A')} | "
+                                        f"batch={p.get('batch_size', 'N/A')} | "
+                                        f"epochs={p.get('epochs', 'N/A')} | "
+                                        f"fitness(F1)={item.get('fitness', 0.0):.4f}"
+                                )
+                else:
+                        print("   • Aucun résultat AutoML à afficher.")
+
+                # Test-set metrics (if evaluate_best_model was run)
+                if getattr(self, 'best_metrics', None):
+                        print(f"\n📊 PERFORMANCE TEST (MEILLEUR MODÈLE):")
+                        print(f"   • Accuracy: {self.best_metrics.get('accuracy', 0.0):.4f}")
+                        print(f"   • Precision: {self.best_metrics.get('precision', 0.0):.4f}")
+                        print(f"   • Recall: {self.best_metrics.get('recall', 0.0):.4f}")
+                        print(f"   • F1-Score: {self.best_metrics.get('f1_score', 0.0):.4f}")
+
+                print("="*80)
+                return
         
         # Meilleur paramétrage
         if test == 'MLP':
@@ -95,10 +128,10 @@ def display_results(self, execution_time,test='MLP',method='GA'):
                 print(f"   • Époques: {best_params['epochs']}")
         # Fitness et métriques
         print(f"\n📊 PERFORMANCE DU MEILLEUR MODÈLE:")
-        print(f"   • Accuracy: {self.best_metrics['accuracy']:.4f}")
-        print(f"   • Precision: {self.best_metrics['precision']:.4f}")
-        print(f"   • Recall: {self.best_metrics['recall']:.4f}")
-        print(f"   • F1-Score: {self.best_metrics['f1_score']:.4f}")
+        print(f"   • Accuracy: {self.best_metrics.get('accuracy', 0.0):.4f}")
+        print(f"   • Precision: {self.best_metrics.get('precision', 0.0):.4f}")
+        print(f"   • Recall: {self.best_metrics.get('recall', 0.0):.4f}")
+        print(f"   • F1-Score: {self.best_metrics.get('f1_score', 0.0):.4f}")
         
         print("="*80)
 
