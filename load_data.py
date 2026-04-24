@@ -46,9 +46,9 @@ def load_data(obj, idx=None):
     
     if idx == '1' :
         df = _normalize_columns(_read_excel_safe(obj.data_path))
-        target_col = _resolve_target_column(df, 'Family')
+        target_col = _resolve_target_column(df, 'Class')
         encodes =  ['EntryPoint', 'PEType', 'magic_number', 'bytes_on_last_page', 'pages_in_file', 'relocations', 'size_of_header', 'min_extra_paragraphs', 'max_extra_paragraphs', 'init_ss_value', 'init_sp_value', 'init_ip_value', 'init_cs_value', 'over_lay_number', 'oem_identifier', 'address_of_ne_header', 'Magic', 'SizeOfCode', 'SizeOfInitializedData', 'SizeOfUninitializedData', 'AddressOfEntryPoint', 'BaseOfCode', 'BaseOfData', 'ImageBase', 'SectionAlignment', 'FileAlignment', 'OperatingSystemVersion', 'ImageVersion', 'SizeOfImage', 'SizeOfHeaders', 'Checksum', 'Subsystem', 'SizeofStackReserve', 'SizeofStackCommit', 'SizeofHeapCommit', 'SizeofHeapReserve', 'LoaderFlags', 'text_VirtualSize', 'text_VirtualAddress', 'text_SizeOfRawData', 'text_PointerToRawData', 'text_PointerToRelocations', 'text_PointerToLineNumbers', 'rdata_VirtualSize', 'rdata_VirtualAddress', 'rdata_SizeOfRawData', 'rdata_PointerToRawData', 'rdata_PointerToRelocations', 'rdata_PointerToLineNumbers', 'rdata_Characteristics']
-        drops = ['md5', 'sha1', 'file_extension', 'MachineType', 'DllCharacteristics', 'text_Characteristics', 'Class', 'Category']
+        drops = ['md5', 'sha1', 'file_extension', 'MachineType', 'DllCharacteristics', 'text_Characteristics', 'Category', 'Family', ]
     elif idx == '2' :
         df = _normalize_columns(_read_excel_safe(obj.data_path))
         target_col = _resolve_target_column(df, 'Benign')
@@ -133,7 +133,7 @@ def load_data(obj, idx=None):
     stratify_first = y if class_counts.min() >= 2 else None
     X_train_val, obj.X_test, y_train_val, obj.y_test = train_test_split(
         X, y,
-        test_size=0.10,
+        test_size=0.20,
         random_state=42,
         stratify=stratify_first
     )
@@ -141,7 +141,8 @@ def load_data(obj, idx=None):
     stratify_second = y_train_val if class_counts_train.min() >= 2 else None
     obj.X_train, obj.X_val, obj.y_train, obj.y_val = train_test_split(
         X_train_val, y_train_val,
-        test_size=0.2222,
+        # 80% remains after test split; 25% of 80% = 20% total for validation
+        test_size=0.25,
         random_state=42,
         stratify=stratify_second
     )

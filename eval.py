@@ -19,12 +19,81 @@ def _decode_automl(individual):
         'model_type': int(individual[0]),
         'learning_rate': float(individual[1]),
         'batch_size': int(individual[2]),
-        'epochs': int(individual[3]),
         'neurons': int(individual[4]),
         'filters': int(individual[5]),
         'kernel_size': int(individual[6]),
         'units': int(individual[7]),
+        'n_conv_layers': int(individual[8]),
+        'pool_size': int(individual[9]),
+        'n_dense_layers': int(individual[10]),
+        'dense_units': int(individual[11]),
+        'dropout_rate': float(individual[12]),
+        'optimizer_idx': int(individual[13]),
+        'activation': individual[14],
     }
+
+
+def _get_sequence_length(obj):
+    """Default to single-step sequences unless explicitly configured."""
+    return max(1, int(getattr(obj, 'sequence_length', 1)))
+
+
+def _reshape_recurrent_input(obj, X):
+    """Prepare RNN/LSTM tensors as (samples, timesteps, features_per_timestep)."""
+    X = np.asarray(X)
+    if X.ndim == 3:
+        return X
+    if X.ndim != 2:
+        raise ValueError(f"Expected 2D or 3D recurrent input, got shape {X.shape}")
+
+    seq_len = _get_sequence_length(obj)
+    if seq_len == 1:
+        return X.reshape(X.shape[0], 1, X.shape[1])
+
+    step_features = getattr(obj, 'features_per_timestep', None)
+    if step_features is not None:
+        step_features = int(step_features)
+        expected = seq_len * step_features
+        if X.shape[1] != expected:
+            raise ValueError(
+                f"Invalid recurrent input width {X.shape[1]} for sequence_length={seq_len} "
+                f"and features_per_timestep={step_features} (expected {expected})."
+            )
+    else:
+        if X.shape[1] % seq_len != 0:
+            raise ValueError(
+                f"Cannot reshape input width {X.shape[1]} into sequence_length={seq_len}. "
+                "Set obj.features_per_timestep explicitly."
+            )
+        step_features = X.shape[1] // seq_len
+
+    return X.reshape(X.shape[0], seq_len, step_features)
+
+
+def _reshape_cnn_input(X):
+    X = np.asarray(X)
+    if X.ndim == 3:
+        return X
+    if X.ndim != 2:
+        raise ValueError(f"Expected 2D or 3D CNN input, got shape {X.shape}")
+    return X.reshape(X.shape[0], X.shape[1], 1)
+
+
+def _prepare_inputs_for_model(self, model_name):
+    model_name = str(model_name).upper()
+    if model_name in ('RNN', 'LSTM'):
+        return (
+            _reshape_recurrent_input(self, self.X_train),
+            _reshape_recurrent_input(self, self.X_val),
+            _reshape_recurrent_input(self, self.X_test),
+        )
+    if model_name == 'CNN':
+        return (
+            _reshape_cnn_input(self.X_train),
+            _reshape_cnn_input(self.X_val),
+            _reshape_cnn_input(self.X_test),
+        )
+    return self.X_train, self.X_val, self.X_test
 
 
 def _build_automl_model(self, cfg):
@@ -37,15 +106,17 @@ def _build_automl_model(self, cfg):
     # 0 -> MLP
     if model_type == 0:
         neurons = max(16, int(cfg['neurons']))
-        dense_units = [neurons, max(16, neurons // 2)]
+        n_dense_layers = int(cfg.get('n_dense_layers', 2))
+        dense_base = max(16, int(cfg.get('dense_units', neurons)))
+        dense_units = [dense_base] * 5
         model = create_mlp_model(
             self,
-            n_dense_layers=2,
+            n_dense_layers=n_dense_layers,
             dense_units=dense_units,
-            dropout_rate=0.2,
+            dropout_rate=float(cfg.get('dropout_rate', 0.2)),
             learning_rate=lr,
-            optimizer_idx=0,
-            activation='relu',
+            optimizer_idx=int(cfg.get('optimizer_idx', 0)),
+            activation=cfg.get('activation', 'relu'),
         )
         x_train, x_val = self.X_train, self.X_val
 
@@ -53,69 +124,78 @@ def _build_automl_model(self, cfg):
     elif model_type == 1:
         filters = max(16, int(cfg['filters']))
         kernel = int(cfg['kernel_size'])
+        n_conv_layers = int(cfg.get('n_conv_layers', 2))
+        n_dense_layers = int(cfg.get('n_dense_layers', 1))
+        dense_base = max(32, int(cfg.get('dense_units', filters)))
         model = create_cnn_model(
             self,
-            n_conv_layers=2,
+            n_conv_layers=n_conv_layers,
             conv_filters=[filters, filters, filters],
             kernel_sizes=[kernel, kernel, kernel],
-            pool_sizes=[2, 2, 2],
-            n_dense_layers=1,
-            dense_units=[max(32, filters)],
-            dropout_rate=0.2,
+            pool_sizes=[int(cfg.get('pool_size', 2))] * 3,
+            n_dense_layers=n_dense_layers,
+            dense_units=[dense_base] * 5,
+            dropout_rate=float(cfg.get('dropout_rate', 0.2)),
             learning_rate=lr,
-            optimizer_idx=0,
-            activation='relu',
+            optimizer_idx=int(cfg.get('optimizer_idx', 0)),
+            activation=cfg.get('activation', 'relu'),
         )
-        x_train = self.X_train.reshape(self.X_train.shape[0], self.X_train.shape[1], 1)
-        x_val = self.X_val.reshape(self.X_val.shape[0], self.X_val.shape[1], 1)
+        x_train = _reshape_cnn_input(self.X_train)
+        x_val = _reshape_cnn_input(self.X_val)
 
     # 2 -> LSTM
     elif model_type == 2:
         units = max(16, int(cfg['units']))
+        n_dense_layers = int(cfg.get('n_dense_layers', 1))
+        dense_base = max(32, int(cfg.get('dense_units', units // 2)))
         model = create_lstm_model(
             self,
             n_lstm_layers=1,
             lstm_units=[units, units, units],
-            dropout_rate=0.2,
+            dropout_rate=float(cfg.get('dropout_rate', 0.2)),
             rec_dropout_rate=0.1,
-            n_dense_layers=1,
-            dense_units=[max(32, units // 2)],
+            n_dense_layers=n_dense_layers,
+            dense_units=[dense_base] * 3,
             learning_rate=lr,
-            optimizer_idx=0,
-            activation='tanh',
+            optimizer_idx=int(cfg.get('optimizer_idx', 0)),
+            activation=cfg.get('activation', 'tanh'),
         )
-        x_train = self.X_train.reshape(self.X_train.shape[0], 1, self.X_train.shape[1])
-        x_val = self.X_val.reshape(self.X_val.shape[0], 1, self.X_val.shape[1])
+        x_train = _reshape_recurrent_input(self, self.X_train)
+        x_val = _reshape_recurrent_input(self, self.X_val)
 
     # 3 -> RNN
     elif model_type == 3:
         units = max(16, int(cfg['units']))
+        n_dense_layers = int(cfg.get('n_dense_layers', 1))
+        dense_base = max(32, int(cfg.get('dense_units', units // 2)))
         model = create_rnn_model(
             self,
             n_layers=1,
             rnn_units=units,
-            n_dense=1,
-            dens=[max(32, units // 2)],
-            optimizer_idx=0,
-            activation='tanh',
-            dropout_rate=0.2,
+            n_dense=n_dense_layers,
+            dens=[dense_base] * 5,
+            optimizer_idx=int(cfg.get('optimizer_idx', 0)),
+            activation=cfg.get('activation', 'tanh'),
+            dropout_rate=float(cfg.get('dropout_rate', 0.2)),
             learning_rate=lr,
         )
-        x_train = self.X_train.reshape(self.X_train.shape[0], 1, self.X_train.shape[1])
-        x_val = self.X_val.reshape(self.X_val.shape[0], 1, self.X_val.shape[1])
+        x_train = _reshape_recurrent_input(self, self.X_train)
+        x_val = _reshape_recurrent_input(self, self.X_val)
 
     # 4 -> DNN
     else:
         neurons = max(16, int(cfg['neurons']))
-        hidden_units = [neurons, max(16, neurons // 2)]
+        n_hidden_layers = int(cfg.get('n_dense_layers', 2))
+        dense_base = max(16, int(cfg.get('dense_units', neurons)))
+        hidden_units = [dense_base] * 5
         model = create_dnn_model(
             self,
-            n_hidden_layers=2,
+            n_hidden_layers=n_hidden_layers,
             hidden_units=hidden_units,
-            dropout_rate=0.2,
+            dropout_rate=float(cfg.get('dropout_rate', 0.2)),
             learning_rate=lr,
-            optimizer_idx=0,
-            activation='relu',
+            optimizer_idx=int(cfg.get('optimizer_idx', 0)),
+            activation=cfg.get('activation', 'relu'),
         )
         x_train, x_val = self.X_train, self.X_val
 
@@ -137,9 +217,9 @@ def evaluate_best_model(self, test='MLP'):
             best_model, x_train, x_val = _build_automl_model(self, cfg)
 
             if cfg['model_type'] == 1:
-                x_test = self.X_test.reshape(self.X_test.shape[0], self.X_test.shape[1], 1)
+                x_test = _reshape_cnn_input(self.X_test)
             elif cfg['model_type'] in (2, 3):
-                x_test = self.X_test.reshape(self.X_test.shape[0], 1, self.X_test.shape[1])
+                x_test = _reshape_recurrent_input(self, self.X_test)
             else:
                 x_test = self.X_test
 
@@ -150,7 +230,7 @@ def evaluate_best_model(self, test='MLP'):
                 verbose=1
             )
 
-            epochs = cfg['epochs'] if cfg['model_type'] != 0 else getattr(self, 'mlp_epochs', 100)
+            epochs = getattr(self, 'fixed_epochs', 100)
 
             history = best_model.fit(
                 x_train, self.y_train,
@@ -182,23 +262,23 @@ def evaluate_best_model(self, test='MLP'):
         if test == 'RNN':
             best_model = create_rnn_model(self, n_layers=self.best_individual[0], rnn_units=self.best_individual[1], n_dense=self.best_individual[2], dens=self.best_individual[3:8], optimizer_idx=self.best_individual[8], activation=self.best_individual[9], dropout_rate=self.best_individual[10], learning_rate=self.best_individual[11])
             batch_size  = self.best_individual[12]
-            epochs = self.best_individual[13]
+            epochs = getattr(self, 'fixed_epochs', 100)
         elif test == 'MLP':
             best_model = create_mlp_model(self, n_dense_layers=self.best_individual[0], dense_units=self.best_individual[1:6], dropout_rate=self.best_individual[6], learning_rate=self.best_individual[7], optimizer_idx=self.best_individual[8], activation=self.best_individual[9])
             batch_size  = self.best_individual[10]
-            epochs = getattr(self, 'mlp_epochs', 100)
+            epochs = getattr(self, 'fixed_epochs', 100)
         elif test == 'CNN':
             best_model = create_cnn_model(self, n_conv_layers=self.best_individual[0], conv_filters=self.best_individual[1:4], kernel_sizes=self.best_individual[4:7], pool_sizes=self.best_individual[7:10], n_dense_layers=self.best_individual[10], dense_units=self.best_individual[11:16], dropout_rate=self.best_individual[16], learning_rate=self.best_individual[17], optimizer_idx=self.best_individual[18], activation=self.best_individual[19])
             batch_size  = self.best_individual[20]
-            epochs = self.best_individual[21]   
+            epochs = getattr(self, 'fixed_epochs', 100)
         elif test == 'DNN':
             best_model = create_dnn_model(self, n_hidden_layers=self.best_individual[0], hidden_units=self.best_individual[1:6], dropout_rate=self.best_individual[6], learning_rate=self.best_individual[7], optimizer_idx=self.best_individual[8], activation=self.best_individual[9])
             batch_size = self.best_individual[10]
-            epochs = self.best_individual[11]
+            epochs = getattr(self, 'fixed_epochs', 100)
         elif test == 'LSTM':
             best_model = create_lstm_model(self, n_lstm_layers=self.best_individual[0], lstm_units=self.best_individual[1:4], dropout_rate=self.best_individual[4], rec_dropout_rate=self.best_individual[5], n_dense_layers=self.best_individual[6], dense_units=self.best_individual[7:10], learning_rate=self.best_individual[10], optimizer_idx=self.best_individual[11], activation=self.best_individual[12])
             batch_size = self.best_individual[13]
-            epochs = self.best_individual[14]
+            epochs = getattr(self, 'fixed_epochs', 100)
         # Callbacks
         early_stopping = EarlyStopping(
             monitor='val_accuracy',
@@ -206,10 +286,11 @@ def evaluate_best_model(self, test='MLP'):
             restore_best_weights=True,
             verbose=1
         )
+        x_train_fit, x_val_fit, x_test_fit = _prepare_inputs_for_model(self, test)
         # Entraînement complet
         history = best_model.fit(
-            self.X_train, self.y_train,
-            validation_data=(self.X_val, self.y_val),
+            x_train_fit, self.y_train,
+            validation_data=(x_val_fit, self.y_val),
             epochs=epochs,
             batch_size=batch_size,
             callbacks=[early_stopping],
@@ -217,7 +298,7 @@ def evaluate_best_model(self, test='MLP'):
         )
         
         # Prédictions sur test set
-        y_pred = best_model.predict(self.X_test, verbose=0, batch_size=1024)
+        y_pred = best_model.predict(x_test_fit, verbose=0, batch_size=1024)
         
         if self.n_classes == 2:
             y_pred_classes = (y_pred > 0.5).astype(int).flatten()
@@ -248,7 +329,7 @@ def evaluate_individual(self, individual,test='MLP'):
                     verbose=0
                 )
 
-                epochs = cfg['epochs'] if cfg['model_type'] != 0 else getattr(self, 'mlp_epochs', 100)
+                epochs = getattr(self, 'fixed_epochs', 100)
 
                 history = model.fit(
                     x_train, self.y_train,
@@ -290,23 +371,23 @@ def evaluate_individual(self, individual,test='MLP'):
             if test == 'RNN':
                 model = create_rnn_model(self, n_layers=individual[0], rnn_units=individual[1], n_dense=individual[2], dens=individual[3:8], optimizer_idx=individual[8], activation=individual[9], dropout_rate=individual[10], learning_rate=individual[11])
                 batch_size  = individual[12]
-                epochs = individual[13]
+                epochs = getattr(self, 'fixed_epochs', 100)
             elif test == 'MLP':
                 model = create_mlp_model(self, individual[0], individual[1:6], individual[6], individual[7], individual[8], individual[9])
                 batch_size  = individual[10]
-                epochs = getattr(self, 'mlp_epochs', 100)
+                epochs = getattr(self, 'fixed_epochs', 100)
             elif test == 'CNN':
                 model = create_cnn_model(self, n_conv_layers=individual[0], conv_filters=individual[1:4], kernel_sizes=individual[4:7], pool_sizes=individual[7:10], n_dense_layers=individual[10], dense_units=individual[11:16], dropout_rate=individual[16], learning_rate=individual[17], optimizer_idx=individual[18], activation=individual[19])
                 batch_size  = individual[20]
-                epochs = individual[21]
+                epochs = getattr(self, 'fixed_epochs', 100)
             elif test == 'DNN':
                 model = create_dnn_model(self, n_hidden_layers=individual[0], hidden_units=individual[1:6], dropout_rate=individual[6], learning_rate=individual[7], optimizer_idx=individual[8], activation=individual[9])
                 batch_size = individual[10]
-                epochs = individual[11]
+                epochs = getattr(self, 'fixed_epochs', 100)
             elif test == 'LSTM':
                 model = create_lstm_model(self, n_lstm_layers=individual[0], lstm_units=individual[1:4], dropout_rate=individual[4], rec_dropout_rate=individual[5], n_dense_layers=individual[6], dense_units=individual[7:10], learning_rate=individual[10], optimizer_idx=individual[11], activation=individual[12])
                 batch_size = individual[13]
-                epochs = individual[14]
+                epochs = getattr(self, 'fixed_epochs', 100)
                 
             
             # Déterminer la taille de batch
@@ -317,11 +398,12 @@ def evaluate_individual(self, individual,test='MLP'):
                 restore_best_weights=True,
                 verbose=0
             )
+            x_train_fit, x_val_fit, _ = _prepare_inputs_for_model(self, test)
             
             # Entraînement
             history = model.fit(
-                self.X_train, self.y_train,
-                validation_data=(self.X_val, self.y_val),
+                x_train_fit, self.y_train,
+                validation_data=(x_val_fit, self.y_val),
                 epochs=epochs,
                 batch_size=batch_size,
                 callbacks=[early_stopping],
@@ -329,7 +411,7 @@ def evaluate_individual(self, individual,test='MLP'):
             )
             
             # Prédictions sur validation
-            y_pred = model.predict(self.X_val, verbose=0, batch_size=1024)
+            y_pred = model.predict(x_val_fit, verbose=0, batch_size=1024)
             
             if self.n_classes == 2:
                 y_pred_classes = (y_pred > 0.5).astype(int).flatten()

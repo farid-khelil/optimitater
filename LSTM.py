@@ -41,6 +41,8 @@ def create_lstm_model(obj, n_lstm_layers=2, lstm_units=[64, 128], dropout_rate=0
         
         # Mappage des index aux valeurs réelles
         model = Sequential()
+        sequence_length = max(1, int(getattr(obj, 'sequence_length', 1)))
+        features_per_timestep = int(getattr(obj, 'features_per_timestep', obj.n_features))
         
         # Couches LSTM (seulement le nombre utilisé)
         for i in range(n_lstm_layers):
@@ -49,7 +51,7 @@ def create_lstm_model(obj, n_lstm_layers=2, lstm_units=[64, 128], dropout_rate=0
                 return_sequences = (n_lstm_layers > 1)
                 model.add(LSTM(
                     units=lstm_units[i],
-                    input_shape=(1, obj.n_features),
+                    input_shape=(sequence_length, features_per_timestep),
                     dropout=dropout_rate,
                     recurrent_dropout=rec_dropout_rate,
                     return_sequences=return_sequences

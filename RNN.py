@@ -9,10 +9,12 @@ from tensorflow.keras.optimizers import Adam, RMSprop, SGD
 def create_rnn_model(obj,n_layers=1,rnn_units=64,n_dense=2,dens=[64,64],optimizer_idx=0, activation='relu', dropout_rate=0.2,learning_rate=0.001):
 
     model = Sequential()
+    sequence_length = max(1, int(getattr(obj, 'sequence_length', 1)))
+    features_per_timestep = int(getattr(obj, 'features_per_timestep', obj.n_features))
 
     model.add(SimpleRNN(
         units=rnn_units,
-        input_shape=(1, obj.n_features),
+        input_shape=(sequence_length, features_per_timestep),
         dropout=dropout_rate,
         return_sequences=True
 

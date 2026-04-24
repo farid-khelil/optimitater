@@ -7,9 +7,37 @@ from CNN import get_cnn_param, create_cnn_model
 from scikeras.wrappers import KerasClassifier
 from tensorflow.keras.callbacks import EarlyStopping
 import itertools
+import random
+import os
+import numpy as np
+import tensorflow as tf
 
 
-def randomized_search_optimization(obj, testing_model='DNN'):
+def _set_global_seed(seed=None):
+    """Set Python/NumPy/TensorFlow seeds for reproducible optimization runs."""
+    if seed is None:
+        return
+
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+
+    try:
+        tf.keras.utils.set_random_seed(seed)
+    except Exception:
+        try:
+            tf.random.set_seed(seed)
+        except Exception:
+            pass
+
+    try:
+        tf.config.experimental.enable_op_determinism()
+    except Exception:
+        pass
+
+
+def randomized_search_optimization(obj, testing_model='DNN', seed=None):
+    _set_global_seed(seed)
 
     if testing_model == 'LSTM':
     # verbose=0 suppresses Keras per-epoch training messages
@@ -46,7 +74,16 @@ def randomized_search_optimization(obj, testing_model='DNN'):
     print("=" * 50)
     
 
-    search = RandomizedSearchCV(estimator=model, param_distributions=param_grid, cv=3, scoring='recall_weighted', n_jobs=1, verbose=0, n_iter=10)
+    search = RandomizedSearchCV(
+        estimator=model,
+        param_distributions=param_grid,
+        cv=3,
+        scoring='recall_weighted',
+        n_jobs=1,
+        verbose=0,
+        n_iter=10,
+        random_state=seed,
+    )
 
     print("\nStarting Randomized Search...\n")
 

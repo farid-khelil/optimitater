@@ -2,6 +2,7 @@
 import time
 from deap import creator, base, tools, algorithms
 import random
+import os
 import tensorflow as tf
 import gc
 import numpy as np
@@ -10,10 +11,36 @@ from tensorflow.keras.callbacks import EarlyStopping
 from eval import evaluate_individual
 
 
+def _set_global_seed(seed=None):
+    """Set Python/NumPy/TensorFlow seeds for reproducible optimization runs."""
+    if seed is None:
+        return
+
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+
+    try:
+        tf.keras.utils.set_random_seed(seed)
+    except Exception:
+        try:
+            tf.random.set_seed(seed)
+        except Exception:
+            pass
+
+    try:
+        tf.config.experimental.enable_op_determinism()
+    except Exception:
+        pass
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Unified AutoML search space
 # Chromosome:
-# [model_type, learning_rate, batch_size, epochs, neurons, filters, kernel_size, units]
+# [model_type, learning_rate, batch_size, epochs,
+#  neurons, filters, kernel_size, units,
+#  n_conv_layers, pool_size, n_dense_layers, dense_units,
+#  dropout_rate, optimizer, activation]
 # model_type: 0=MLP, 1=CNN, 2=LSTM, 3=RNN, 4=DNN
 # ─────────────────────────────────────────────────────────────────────────────
 MODEL_TYPE_MAP = {
@@ -29,7 +56,7 @@ AUTO_KERNEL_SIZES = [3, 5, 7]
 
 AUTO_BOUNDS = {
     "learning_rate": (1e-5, 1e-2),
-    "epochs": (20, 300),
+    "epochs": (100, 100),
     "neurons": (16, 512),
     "filters": (16, 256),
     "units": (16, 512),
@@ -41,28 +68,99 @@ def _clip(value, low, high):
 
 
 def decode_automl_individual(individual):
+    optimizers_names = ['Adam', 'RMSprop', 'SGD']
     return {
         "model_type": int(individual[0]),
         "model_name": MODEL_TYPE_MAP.get(int(individual[0]), "UNKNOWN"),
         "learning_rate": float(individual[1]),
         "batch_size": int(individual[2]),
-        "epochs": int(individual[3]),
         "neurons": int(individual[4]),
         "filters": int(individual[5]),
         "kernel_size": int(individual[6]),
         "units": int(individual[7]),
+        "n_conv_layers": int(individual[8]),
+        "pool_size": int(individual[9]),
+        "n_dense_layers": int(individual[10]),
+        "dense_units": int(individual[11]),
+        "dropout_rate": float(individual[12]),
+        "optimizer": optimizers_names[int(individual[13])],
+        "activation": individual[14],
     }
+
+
+def _automl_relevant_params(params):
+    """Return only model-relevant params for display."""
+    model_name = params.get("model_name", "UNKNOWN")
+    out = {
+        "model_type": params.get("model_type"),
+        "model_name": model_name,
+        "learning_rate": params.get("learning_rate"),
+        "batch_size": params.get("batch_size"),
+        "dropout_rate": params.get("dropout_rate"),
+        "optimizer": params.get("optimizer"),
+        "activation": params.get("activation"),
+    }
+
+    if model_name in ("MLP", "DNN"):
+        n_dense = int(params.get("n_dense_layers") or 1)
+        dense_unit = int(params.get("dense_units") or 32)
+        out["neurons"] = params.get("neurons")
+        out["n_dense_layers"] = n_dense
+        out["dense_units"] = [dense_unit] * n_dense
+    elif model_name == "CNN":
+        n_conv = int(params.get("n_conv_layers") or 1)
+        n_dense = int(params.get("n_dense_layers") or 1)
+        dense_unit = int(params.get("dense_units") or 32)
+        filters = int(params.get("filters") or 16)
+        kernel = int(params.get("kernel_size") or 3)
+        pool = int(params.get("pool_size") or 2)
+        out["n_conv_layers"] = n_conv
+        out["conv_filters"] = [filters] * n_conv
+        out["kernel_sizes"] = [kernel] * n_conv
+        out["pool_sizes"] = [pool] * n_conv
+        out["n_dense_layers"] = n_dense
+        out["dense_units"] = [dense_unit] * n_dense
+    elif model_name == "LSTM":
+        n_dense = int(params.get("n_dense_layers") or 1)
+        dense_unit = int(params.get("dense_units") or 32)
+        units = int(params.get("units") or 32)
+        n_lstm_layers = 1
+        out["n_lstm_layers"] = n_lstm_layers
+        out["lstm_units"] = [units] * n_lstm_layers
+        out["units"] = units
+        out["rec_dropout_rate"] = 0.1
+        out["n_dense_layers"] = n_dense
+        out["dense_units"] = [dense_unit] * n_dense
+    elif model_name == "RNN":
+        n_dense = int(params.get("n_dense_layers") or 1)
+        dense_unit = int(params.get("dense_units") or 32)
+        units = int(params.get("units") or 32)
+        n_rnn_layers = 1
+        out["n_rnn_layers"] = n_rnn_layers
+        out["rnn_units"] = [units] * n_rnn_layers
+        out["units"] = units
+        out["n_dense_layers"] = n_dense
+        out["dense_units"] = [dense_unit] * n_dense
+
+    return out
 
 
 def get_automl_param(toolbox):
     toolbox.register("model_type", random.randint, 0, 4)
     toolbox.register("learning_rate", random.uniform, AUTO_BOUNDS["learning_rate"][0], AUTO_BOUNDS["learning_rate"][1])
     toolbox.register("batch_size", random.choice, AUTO_BATCH_SIZES)
-    toolbox.register("epochs", random.randint, AUTO_BOUNDS["epochs"][0], AUTO_BOUNDS["epochs"][1])
+    toolbox.register("epochs", lambda: 100)
     toolbox.register("neurons", random.randint, AUTO_BOUNDS["neurons"][0], AUTO_BOUNDS["neurons"][1])
     toolbox.register("filters", random.randint, AUTO_BOUNDS["filters"][0], AUTO_BOUNDS["filters"][1])
     toolbox.register("kernel_size", random.choice, AUTO_KERNEL_SIZES)
     toolbox.register("units", random.randint, AUTO_BOUNDS["units"][0], AUTO_BOUNDS["units"][1])
+    toolbox.register("n_conv_layers", random.choice, [1, 2, 3])
+    toolbox.register("pool_size", random.choice, [2, 4])
+    toolbox.register("n_dense_layers", random.choice, [1, 2, 3])
+    toolbox.register("dense_units", random.choice, [32, 64, 128, 256])
+    toolbox.register("dropout_rate", random.choice, [0.0, 0.1, 0.2, 0.3, 0.5])
+    toolbox.register("optimizer", random.randint, 0, 2)
+    toolbox.register("activation", random.choice, ['relu', 'tanh', 'sigmoid', 'leaky_relu'])
 
     toolbox.register(
         "individual",
@@ -77,6 +175,13 @@ def get_automl_param(toolbox):
             toolbox.filters,
             toolbox.kernel_size,
             toolbox.units,
+            toolbox.n_conv_layers,
+            toolbox.pool_size,
+            toolbox.n_dense_layers,
+            toolbox.dense_units,
+            toolbox.dropout_rate,
+            toolbox.optimizer,
+            toolbox.activation,
         ),
         n=1,
     )
@@ -111,7 +216,7 @@ def get_cnn_param(toolbox):
     toolbox.register("optimizer", random.randint, 0, 2)
     toolbox.register("activation", random.choice, ['relu', 'tanh', 'sigmoid', 'leaky_relu'])
     toolbox.register("batch_size", random.choice,[16, 32, 64, 128])
-    toolbox.register("n_epochs", random.choice, [50, 100, 150])
+    toolbox.register("n_epochs", random.choice, [100])
 
     toolbox.register("individual", tools.initCycle, creator.Individual,
                         (toolbox.n_conv_layers,
@@ -137,6 +242,7 @@ def get_rnn_param(toolbox):
     toolbox.register("optimizer", random.randint, 0, 2)
     toolbox.register("activation", random.choice, ['relu', 'elu', 'selu', 'tanh'])
     toolbox.register("batch_size", random.choice, [16, 32, 64, 128])
+    toolbox.register("n_epochs", random.choice, [100])
 
     toolbox.register("individual", tools.initCycle, creator.Individual,
                         (toolbox.n_rnn_layers,
@@ -157,7 +263,7 @@ def get_dnn_param(toolbox):
     toolbox.register("optimizer_idx", random.choice, [0, 1, 2])
     toolbox.register("activation", random.choice, ['relu', 'tanh', 'sigmoid', 'leaky_relu'])
     toolbox.register("batch_size", random.choice, [16, 32, 64])
-    toolbox.register("n_epochs", random.choice, [50, 100, 150])
+    toolbox.register("n_epochs", random.choice, [100])
 
     toolbox.register("individual", tools.initCycle, creator.Individual,
                         (toolbox.n_hidden_layers,
@@ -181,7 +287,7 @@ def get_lstm_param(toolbox):
     toolbox.register("optimizer_idx", random.choice, [0, 1, 2])
     toolbox.register("activation", random.choice, ['relu', 'tanh', 'sigmoid', 'leaky_relu'])
     toolbox.register("batch_size", random.choice, [16, 32, 64])
-    toolbox.register("n_epochs", random.choice, [50, 100, 150])
+    toolbox.register("n_epochs", random.choice, [100])
     toolbox.register("individual", tools.initCycle, creator.Individual,
                                 (toolbox.n_lstm_layers,
                                  toolbox.lstm_units, toolbox.lstm_units, toolbox.lstm_units,
@@ -266,11 +372,7 @@ def custom_automl_mutation(self, individual):
 
         # epochs (+/- 1..5)
         elif gene_idx == 3:
-            delta = random.randint(1, 5)
-            if random.random() < 0.5:
-                delta = -delta
-            epochs = int(individual[3]) + delta
-            individual[3] = int(_clip(epochs, AUTO_BOUNDS["epochs"][0], AUTO_BOUNDS["epochs"][1]))
+            individual[3] = 100
 
         # neurons / filters / units (+/-32)
         elif gene_idx == 4:
@@ -287,6 +389,27 @@ def custom_automl_mutation(self, individual):
         elif gene_idx == 7:
             val = int(individual[7]) + random.randint(-32, 32)
             individual[7] = int(_clip(val, AUTO_BOUNDS["units"][0], AUTO_BOUNDS["units"][1]))
+
+        elif gene_idx == 8:  # n_conv_layers
+            individual[8] = random.choice([1, 2, 3])
+
+        elif gene_idx == 9:  # pool_size
+            individual[9] = random.choice([2, 4])
+
+        elif gene_idx == 10:  # n_dense_layers
+            individual[10] = random.choice([1, 2, 3])
+
+        elif gene_idx == 11:  # dense_units
+            individual[11] = random.choice([32, 64, 128, 256])
+
+        elif gene_idx == 12:  # dropout_rate
+            individual[12] = random.choice([0.0, 0.1, 0.2, 0.3, 0.5])
+
+        elif gene_idx == 13:  # optimizer
+            individual[13] = random.randint(0, 2)
+
+        elif gene_idx == 14:  # activation
+            individual[14] = random.choice(['relu', 'tanh', 'sigmoid', 'leaky_relu'])
 
     return individual,
 
@@ -341,7 +464,7 @@ def custom_cnn_mutation(self, individual):
         elif gene_idx == 20:  # batch_size
             individual[gene_idx] = random.choice([16, 32, 64, 128])
         elif gene_idx == 21:  # n_epochs
-            individual[gene_idx] = random.choice([50, 100, 150])
+            individual[gene_idx] = 100
     
     return individual,
 
@@ -369,7 +492,7 @@ def custom_rnn_mutation(self, individual):
         elif gene_idx == 12:  # batch_size
             individual[gene_idx] = random.choice([16, 32, 64, 128])
         elif gene_idx == 13:  # n_epochs
-            individual[gene_idx] = random.choice([50, 100, 150])
+            individual[gene_idx] = 100
     
     return individual,
 
@@ -403,7 +526,7 @@ def custom_dnn_mutation(self, individual):
         elif gene_idx == 10:                    # batch_size
             individual[gene_idx] = random.choice([16, 32, 64])
         elif gene_idx == 11:                    # n_epochs
-            individual[gene_idx] = random.choice([50, 100, 150])
+            individual[gene_idx] = 100
     return individual,
 
 def custom_lstm_mutation(self, individual):
@@ -431,14 +554,16 @@ def custom_lstm_mutation(self, individual):
         elif gene_idx == 13:  # batch_size
             individual[gene_idx] = random.choice([16, 32, 64])
         elif gene_idx == 14:  # n_epochs
-            individual[gene_idx] = random.choice([50, 100, 150])
+            individual[gene_idx] = 100
     return individual,
 # execution_time is not yet defined in this context
     
 
 
-def run_ga_optimization(self, test='AUTOML'):
+def run_ga_optimization(self, test='AUTOML', seed=None):
     """Exécution de l'optimisation en séquentiel"""
+    _set_global_seed(seed)
+
     start_time = time.time()
     automl_mode = test in ('AUTOML', 'AUTO', 'ALL', 'UNIFIED')
 
@@ -530,16 +655,12 @@ def run_ga_optimization(self, test='AUTOML'):
     if automl_mode and hasattr(self, "top_k_results"):
         print("\nTop Results (best unique model types tested):")
         for item in self.top_k_results:
-            p = item["params"]
+            p = _automl_relevant_params(item["params"])
             print(
                 f"{item['rank']}. {p['model_name']} | "
                 f"lr={p['learning_rate']:.5f} | "
                 f"batch={p['batch_size']} | "
-                f"epochs={p['epochs']} | "
-                f"neurons={p['neurons']} | "
-                f"filters={p['filters']} | "
-                f"kernel={p['kernel_size']} | "
-                f"units={p['units']} | "
+                f"params={p} | "
                 f"fitness={item['fitness']:.4f}"
             )
 

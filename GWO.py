@@ -1,5 +1,7 @@
 from mealpy.swarm_based import GWO
 import numpy as np
+import random
+import os
 from MLP import create_mlp_model
 from LSTM import create_lstm_model
 from CNN import create_cnn_model
@@ -10,6 +12,29 @@ from mealpy.utils.space import IntegerVar, FloatVar, CategoricalVar
 from tensorflow.keras.callbacks import EarlyStopping
 import tensorflow as tf
 import gc
+
+
+def _set_global_seed(seed=None):
+    """Set Python/NumPy/TensorFlow seeds for reproducible optimization runs."""
+    if seed is None:
+        return
+
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+
+    try:
+        tf.keras.utils.set_random_seed(seed)
+    except Exception:
+        try:
+            tf.random.set_seed(seed)
+        except Exception:
+            pass
+
+    try:
+        tf.config.experimental.enable_op_determinism()
+    except Exception:
+        pass
 
 
 def _print_section(title):
@@ -261,7 +286,9 @@ def _format_best_individual(decoded, test='MLP'):
         decoded["optimizer_idx"], decoded["activation"], decoded["batch_size"], 100
     ]
 
-def GrayWolfOptimizer(obj,test='MLP', target_evaluations=500, pop_size=15):
+def GrayWolfOptimizer(obj,test='MLP', target_evaluations=500, pop_size=15, seed=None):
+    _set_global_seed(seed)
+
     if test == 'LSTM' or test == 'RNN':
         obj.X_train = obj.X_train.reshape(obj.X_train.shape[0], 1, obj.X_train.shape[1])
         obj.X_val = obj.X_val.reshape(obj.X_val.shape[0], 1, obj.X_val.shape[1])
