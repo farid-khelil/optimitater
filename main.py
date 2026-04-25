@@ -150,6 +150,13 @@ class MODEL:
         obj.best_fitness = 0
         obj.best_metrics = {}
 
+        # CV config used by load_data/eval (80% train pool -> k-fold train/val)
+        obj.use_cv = True
+        obj.cv_folds = 5
+        obj.cv_indices = None
+        obj.X_train_val = None
+        obj.y_train_val = None
+
 def test_model(obj):
     from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix
     preds = obj.model.predict(obj.X_test)
@@ -184,6 +191,9 @@ def test_model(obj):
 # obj = MODEL('/home/azureuser/cloudfiles/code/Users/faridklc17/Ransomware_headers.xlsx')
 # obj = MODEL('/home/azureuser/cloudfiles/code/Users/faridklc17/src/RBA.xlsx')
 obj = MODEL(RISS_PATH)
+# CV settings (80% training pool split into k folds; each fold is ~80/20 train/val)
+obj.use_cv = True
+obj.cv_folds = 5
 load_data(obj, idx='2')
 # load_and_preprocess_data(obj)
 

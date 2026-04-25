@@ -4,6 +4,7 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.feature_selection import VarianceThreshold, SelectKBest, f_classif
 import numpy as np
 from sklearn.model_selection import train_test_split
+from sklearn.model_selection import StratifiedKFold, KFold
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -137,21 +138,14 @@ def load_data(obj, idx=None):
         random_state=42,
         stratify=stratify_first
     )
-    class_counts_train = np.bincount(y_train_val)
-    stratify_second = y_train_val if class_counts_train.min() >= 2 else None
-    obj.X_train, obj.X_val, obj.y_train, obj.y_val = train_test_split(
-        X_train_val, y_train_val,
-        # 80% remains after test split; 25% of 80% = 20% total for validation
-        test_size=0.25,
-        random_state=42,
-        stratify=stratify_second
-    )
-    
-    obj.X_train = obj.scaler.fit_transform(obj.X_train)
-    obj.X_val = obj.scaler.transform(obj.X_val)
+    # Keep a persistent 80% training pool (for optional CV) and 20% test holdout.
+    obj.X_train_val = np.asarray(X_train_val)
+    obj.y_train_val = np.asarray(y_train_val).astype(int)
+
+    # Fit preprocessing on the full training pool only (never on test).
+    obj.X_train_val = obj.scaler.fit_transform(obj.X_train_val)
     obj.X_test = obj.scaler.transform(obj.X_test)
-    obj.X_train = obj.smootheringScaler.fit_transform(obj.X_train)
-    obj.X_val = obj.smootheringScaler.transform(obj.X_val)
+    obj.X_train_val = obj.smootheringScaler.fit_transform(obj.X_train_val)
     obj.X_test = obj.smootheringScaler.transform(obj.X_test)
 
     # ── Feature selection for RISS (16 380 features → manageable subset) ────────
@@ -159,19 +153,56 @@ def load_data(obj, idx=None):
     if idx == '4':
         # 1. Remove constant / near-constant features
         vt = VarianceThreshold(threshold=0.0)
-        obj.X_train = vt.fit_transform(obj.X_train)
-        obj.X_val   = vt.transform(obj.X_val)
-        obj.X_test  = vt.transform(obj.X_test)
-        print(f"After VarianceThreshold: {obj.X_train.shape[1]} features remaining")
+        obj.X_train_val = vt.fit_transform(obj.X_train_val)
+        obj.X_test = vt.transform(obj.X_test)
+        print(f"After VarianceThreshold: {obj.X_train_val.shape[1]} features remaining")
 
         # 2. Keep top-500 features ranked by ANOVA F-score (fit on train only)
-        K = min(500, obj.X_train.shape[1])
+        K = min(500, obj.X_train_val.shape[1])
         selector = SelectKBest(f_classif, k=K)
-        obj.X_train = selector.fit_transform(obj.X_train, obj.y_train)
-        obj.X_val   = selector.transform(obj.X_val)
-        obj.X_test  = selector.transform(obj.X_test)
+        obj.X_train_val = selector.fit_transform(obj.X_train_val, obj.y_train_val)
+        obj.X_test = selector.transform(obj.X_test)
         obj.feature_selector = selector          # store for later use
-        print(f"After SelectKBest(k={K}): {obj.X_train.shape[1]} features")
+        print(f"After SelectKBest(k={K}): {obj.X_train_val.shape[1]} features")
+
+    # CV setup on the 80% training pool (default: 5 folds => 80/20 train/val per fold).
+    cv_folds = max(1, int(getattr(obj, 'cv_folds', 5)))
+    obj.use_cv = bool(getattr(obj, 'use_cv', True) and cv_folds > 1)
+
+    if obj.use_cv:
+        counts = np.bincount(obj.y_train_val)
+        can_stratify = counts.min() >= cv_folds
+        splitter = (
+            StratifiedKFold(n_splits=cv_folds, shuffle=True, random_state=42)
+            if can_stratify
+            else KFold(n_splits=cv_folds, shuffle=True, random_state=42)
+        )
+        obj.cv_indices = list(splitter.split(obj.X_train_val, obj.y_train_val))
+
+        # Keep first fold as active train/val for legacy paths that expect these attrs.
+        train_idx, val_idx = obj.cv_indices[0]
+        obj.X_train = obj.X_train_val[train_idx]
+        obj.y_train = obj.y_train_val[train_idx]
+        obj.X_val = obj.X_train_val[val_idx]
+        obj.y_val = obj.y_train_val[val_idx]
+        print(f"Cross-validation enabled: {cv_folds} folds on 80% training pool.")
+    else:
+        class_counts_train = np.bincount(obj.y_train_val)
+        stratify_second = obj.y_train_val if class_counts_train.min() >= 2 else None
+        obj.X_train, obj.X_val, obj.y_train, obj.y_val = train_test_split(
+            obj.X_train_val, obj.y_train_val,
+            # 25% of 80% => 20% total as validation
+            test_size=0.25,
+            random_state=42,
+            stratify=stratify_second
+        )
+
+    obj.X_train = np.asarray(obj.X_train)
+    obj.X_val = np.asarray(obj.X_val)
+    obj.X_test = np.asarray(obj.X_test)
+    obj.y_train = np.asarray(obj.y_train).astype(int)
+    obj.y_val = np.asarray(obj.y_val).astype(int)
+    obj.y_test = np.asarray(obj.y_test).astype(int)
 
     obj.n_features = obj.X_train.shape[1]
 
