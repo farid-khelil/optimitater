@@ -3,7 +3,7 @@ from random import random
 import tensorflow as tf
 import numpy as np
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Dropout, BatchNormalization
+from tensorflow.keras.layers import Input, Dense, Dropout, BatchNormalization
 from tensorflow.keras.optimizers import Adam, RMSprop, SGD
 
 def get_mlp_param():
@@ -34,12 +34,12 @@ def create_mlp_model(obj, n_dense_layers=2, dense_units=[52,64], dropout_rate=0.
         
         # Mappage des index aux valeurs réelles
         model = Sequential()
+        model.add(Input(shape=(obj.n_features,)))
         
-        # Première couche avec input_shape
+        # Première couche
         model.add(Dense(
             units=dense_units[0],
-            activation=activation,
-            input_shape=(obj.n_features,)
+            activation=activation
         ))
         model.add(BatchNormalization())
         model.add(Dropout(dropout_rate))

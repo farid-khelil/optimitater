@@ -1,6 +1,7 @@
 import numpy as np
 import tensorflow as tf
 import gc
+from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from tensorflow.keras.callbacks import EarlyStopping
 from MLP import create_mlp_model
@@ -103,6 +104,45 @@ def _prepare_train_val_for_model(self, model_name, X_train, X_val):
     if model_name == 'CNN':
         return _reshape_cnn_input(X_train), _reshape_cnn_input(X_val)
     return X_train, X_val
+
+
+def _get_training_and_validation_split(self):
+    """Return a single train/validation split for fitness evaluation.
+
+    When a full 80% training pool is available, create an internal 80/20
+    train/validation split from that pool. Otherwise, fall back to the
+    precomputed X_train / X_val split.
+    """
+    if (
+        hasattr(self, 'X_train_val') and self.X_train_val is not None
+        and hasattr(self, 'y_train_val') and self.y_train_val is not None
+    ):
+        X_source = np.asarray(self.X_train_val)
+        y_source = np.asarray(self.y_train_val).astype(int)
+
+        stratify = None
+        try:
+            class_counts = np.bincount(y_source)
+            if class_counts.size > 0 and class_counts.min() >= 2:
+                stratify = y_source
+        except Exception:
+            stratify = None
+
+        X_train, X_val, y_train, y_val = train_test_split(
+            X_source,
+            y_source,
+            test_size=0.20,
+            random_state=42,
+            stratify=stratify,
+        )
+        return X_train, X_val, y_train, y_val
+
+    return (
+        np.asarray(self.X_train),
+        np.asarray(self.X_val),
+        np.asarray(self.y_train).astype(int),
+        np.asarray(self.y_val).astype(int),
+    )
 
 
 def _build_automl_model(self, cfg, X_train=None, X_val=None):
@@ -221,7 +261,12 @@ def evaluate_best_model(self, test='MLP'):
         print(f"🎯 Évaluation du meilleur modèle {test}...")
 
         if _is_automl_mode(test):
-            cfg = _decode_automl(self.best_individual)
+            if getattr(self, 'best_params', None):
+                cfg = dict(self.best_params)
+                if 'optimizer' in cfg and 'optimizer_idx' not in cfg:
+                    cfg['optimizer_idx'] = cfg['optimizer']
+            else:
+                cfg = _decode_automl(self.best_individual)
             model_name = _model_name_from_type(cfg['model_type'])
             print(f"🤖 AutoML best model selected: {model_name}")
 
@@ -243,9 +288,12 @@ def evaluate_best_model(self, test='MLP'):
 
             epochs = getattr(self, 'fixed_epochs', 100)
 
+            y_train_fit = np.asarray(self.y_train).astype(int)
+            y_val_fit = np.asarray(self.y_val).astype(int)
+
             history = best_model.fit(
-                x_train, self.y_train,
-                validation_data=(x_val, self.y_val),
+                x_train, y_train_fit,
+                validation_data=(x_val, y_val_fit),
                 epochs=epochs,
                 batch_size=cfg['batch_size'],
                 callbacks=[early_stopping],
@@ -297,10 +345,12 @@ def evaluate_best_model(self, test='MLP'):
             restore_best_weights=True,
             verbose=1
         )
-        x_train_fit, x_val_fit, x_test_fit = _prepare_inputs_for_model(self, test)
+        x_train_raw, x_val_raw, y_train_fit, y_val_fit = _get_training_and_validation_split(self)
+        x_train_fit, x_val_fit = _prepare_train_val_for_model(self, test, x_train_raw, x_val_raw)
+        x_test_fit = _reshape_cnn_input(self.X_test) if test == 'CNN' else _reshape_recurrent_input(self, self.X_test) if test in ('RNN', 'LSTM') else self.X_test
         # Entraînement complet
         history = best_model.fit(
-            x_train_fit, self.y_train,
+            x_train_fit, y_train_fit,
             validation_data=(x_val_fit, self.y_val),
             epochs=epochs,
             batch_size=batch_size,
@@ -329,14 +379,6 @@ def evaluate_best_model(self, test='MLP'):
 def evaluate_individual(self, individual,test='MLP'):
         """Évaluation d'un individu avec gestion mémoire"""
         try:
-            use_cv = bool(
-                getattr(self, 'use_cv', False)
-                and hasattr(self, 'cv_indices')
-                and getattr(self, 'cv_indices', None)
-                and hasattr(self, 'X_train_val')
-                and hasattr(self, 'y_train_val')
-            )
-
             if _is_automl_mode(test):
                 cfg = _decode_automl(individual)
                 epochs = getattr(self, 'fixed_epochs', 100)
@@ -347,63 +389,29 @@ def evaluate_individual(self, individual,test='MLP'):
                     verbose=0
                 )
 
-                if use_cv:
-                    fold_scores = []
-                    for train_idx, val_idx in self.cv_indices:
-                        y_train_fold = self.y_train_val[train_idx]
-                        y_val_fold = self.y_train_val[val_idx]
-                        model, x_train, x_val = _build_automl_model(
-                            self,
-                            cfg,
-                            X_train=self.X_train_val[train_idx],
-                            X_val=self.X_train_val[val_idx],
-                        )
+                x_train_raw, x_val_raw, y_train_fit, y_val_fit = _get_training_and_validation_split(self)
+                model, x_train, x_val = _build_automl_model(self, cfg, X_train=x_train_raw, X_val=x_val_raw)
 
-                        history = model.fit(
-                            x_train, y_train_fold,
-                            validation_data=(x_val, y_val_fold),
-                            epochs=epochs,
-                            batch_size=cfg['batch_size'],
-                            callbacks=[early_stopping],
-                            verbose=0
-                        )
+                history = model.fit(
+                    x_train, y_train_fit,
+                    validation_data=(x_val, y_val_fit),
+                    epochs=epochs,
+                    batch_size=cfg['batch_size'],
+                    callbacks=[early_stopping],
+                    verbose=0
+                )
 
-                        y_pred = model.predict(x_val, verbose=0, batch_size=1024)
-                        if self.n_classes == 2:
-                            y_pred_classes = (y_pred > 0.5).astype(int).flatten()
-                        else:
-                            y_pred_classes = np.argmax(y_pred, axis=1)
-
-                        fold_scores.append(float(f1_score(y_val_fold, y_pred_classes, average='weighted')))
-
-                        del model, history, y_pred, y_pred_classes
-                        tf.keras.backend.clear_session()
-                        gc.collect()
-
-                    fitness = float(np.mean(fold_scores)) if fold_scores else 0.0
+                # Fitness objective for AutoML: validation F1-score (weighted)
+                y_pred = model.predict(x_val, verbose=0, batch_size=1024)
+                if self.n_classes == 2:
+                    y_pred_classes = (y_pred > 0.5).astype(int).flatten()
                 else:
-                    model, x_train, x_val = _build_automl_model(self, cfg)
+                    y_pred_classes = np.argmax(y_pred, axis=1)
+                fitness = float(f1_score(y_val_fit, y_pred_classes, average='weighted'))
 
-                    history = model.fit(
-                        x_train, self.y_train,
-                        validation_data=(x_val, self.y_val),
-                        epochs=epochs,
-                        batch_size=cfg['batch_size'],
-                        callbacks=[early_stopping],
-                        verbose=0
-                    )
-
-                    # Fitness objective for AutoML: validation F1-score (weighted)
-                    y_pred = model.predict(x_val, verbose=0, batch_size=1024)
-                    if self.n_classes == 2:
-                        y_pred_classes = (y_pred > 0.5).astype(int).flatten()
-                    else:
-                        y_pred_classes = np.argmax(y_pred, axis=1)
-                    fitness = float(f1_score(self.y_val, y_pred_classes, average='weighted'))
-
-                    del model, history, y_pred, y_pred_classes
-                    tf.keras.backend.clear_session()
-                    gc.collect()
+                del model, history, y_pred, y_pred_classes
+                tf.keras.backend.clear_session()
+                gc.collect()
 
                 # Keep best tested individual per model type (unique models in final ranking)
                 if not hasattr(self, '_automl_best_by_model') or self._automl_best_by_model is None:
@@ -446,50 +454,14 @@ def evaluate_individual(self, individual,test='MLP'):
                 verbose=0
             )
 
-            if use_cv:
-                fold_scores = []
-                for train_idx, val_idx in self.cv_indices:
-                    model, batch_size = _build_model_for_test()
-                    y_train_fold = self.y_train_val[train_idx]
-                    y_val_fold = self.y_train_val[val_idx]
-                    x_train_fold, x_val_fold = _prepare_train_val_for_model(
-                        self,
-                        test,
-                        self.X_train_val[train_idx],
-                        self.X_train_val[val_idx],
-                    )
-
-                    history = model.fit(
-                        x_train_fold, y_train_fold,
-                        validation_data=(x_val_fold, y_val_fold),
-                        epochs=epochs,
-                        batch_size=batch_size,
-                        callbacks=[early_stopping],
-                        verbose=0
-                    )
-
-                    y_pred = model.predict(x_val_fold, verbose=0, batch_size=1024)
-
-                    if self.n_classes == 2:
-                        y_pred_classes = (y_pred > 0.5).astype(int).flatten()
-                    else:
-                        y_pred_classes = np.argmax(y_pred, axis=1)
-
-                    fold_scores.append(float(recall_score(y_val_fold, y_pred_classes, average='weighted')))
-
-                    del model, history, y_pred, y_pred_classes
-                    tf.keras.backend.clear_session()
-                    gc.collect()
-
-                return (float(np.mean(fold_scores)) if fold_scores else 0.0,)
-
+            x_train_raw, x_val_raw, y_train_fit, y_val_fit = _get_training_and_validation_split(self)
             model, batch_size = _build_model_for_test()
-            x_train_fit, x_val_fit, _ = _prepare_inputs_for_model(self, test)
+            x_train_fit, x_val_fit = _prepare_train_val_for_model(self, test, x_train_raw, x_val_raw)
 
             # Entraînement
             history = model.fit(
-                x_train_fit, self.y_train,
-                validation_data=(x_val_fit, self.y_val),
+                x_train_fit, y_train_fit,
+                validation_data=(x_val_fit, y_val_fit),
                 epochs=epochs,
                 batch_size=batch_size,
                 callbacks=[early_stopping],
@@ -504,15 +476,15 @@ def evaluate_individual(self, individual,test='MLP'):
             else:
                 y_pred_classes = np.argmax(y_pred, axis=1)
 
-            # CALCUL DU RECALL (METRIQUE PRINCIPALE)
-            recall = recall_score(self.y_val, y_pred_classes, average='weighted')
+            # CALCUL DU F1 SCORE (NOUVELLE METRIQUE PRINCIPALE)
+            f1 = f1_score(y_val_fit, y_pred_classes, average='weighted')
 
             # Nettoyage mémoire
             del model, history, y_pred, y_pred_classes
             tf.keras.backend.clear_session()
             gc.collect()
 
-            return (recall,)
+            return (f1,)
             
         except Exception as e:
             print(individual)

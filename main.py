@@ -37,7 +37,7 @@ BASE_OUT    = '/kaggle/working'                  if ON_KAGGLE else '/home/farid/
 DATA_ROOT   = '/kaggle/input'                    if ON_KAGGLE else '/home/farid/pfe/data/processed'
 RISS_PATH   = f'{DATA_ROOT}/riss-dataset/RISS.csv' if ON_KAGGLE else f'{DATA_ROOT}/ransomware/WPD.xlsx'
 # ──────────────────────────────────────────────────────────────────────────
-SEED = 43
+SEED = 42
 
 def set_global_determinism(seed=42):
     """Best-effort deterministic setup for reproducible runs."""
@@ -130,21 +130,24 @@ class MODEL:
         obj.n_features = None
         obj.n_classes = None
         obj.model = None
-        obj.smootheringScaler = MinMaxScaler()
         obj.scaler = StandardScaler()
         obj.label_encoder = LabelEncoder()
         obj.result_encoder = LabelEncoder()
         obj.home_encoder = LabelEncoder()
         obj.away_encoder = LabelEncoder()
 
+        # Smoothing config (moving average across samples per feature)
+        obj.enable_smoothing = False
+        obj.smoothing_window = 9
+
         # Paramètres GA optimisés pour portabilité
         obj.population_size = 5
-        obj.generations = 0
+        obj.generations = 3
         obj.crossover_prob = 0.85
         obj.mutation_prob = 0.15
         # Paramètres GWO optimisés pour portabilité
-        obj.target_evaluations = 300
-        obj.pop_size = 15
+        obj.target_evaluations = 5
+        obj.pop_size = 5
         # Meilleurs résultats
         obj.best_individual = None
         obj.best_fitness = 0
@@ -156,6 +159,11 @@ class MODEL:
         obj.cv_indices = None
         obj.X_train_val = None
         obj.y_train_val = None
+
+        # RS (random search) params (editable)
+        obj.rs_n_iter = 100
+        obj.rs_n_folds = 5
+        obj.rs_batch_size = 1
 
 def test_model(obj):
     from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix
@@ -191,54 +199,56 @@ def test_model(obj):
 # obj = MODEL('/home/azureuser/cloudfiles/code/Users/faridklc17/Ransomware_headers.xlsx')
 # obj = MODEL('/home/azureuser/cloudfiles/code/Users/faridklc17/src/RBA.xlsx')
 obj = MODEL(RISS_PATH)
-# CV settings (80% training pool split into k folds; each fold is ~80/20 train/val)
-obj.use_cv = True
-obj.cv_folds = 5
 load_data(obj, idx='2')
 # load_and_preprocess_data(obj)
 
-obj.model = create_cnn_model(
-    obj=obj,
-    n_conv_layers=3,
-    conv_filters=[23, 23, 23],
-    kernel_sizes=[3, 3, 3],
-    pool_sizes=[2, 2, 2],
-    n_dense_layers=2,
-    dense_units=[32, 32],
-    dropout_rate=0.2,
-    learning_rate=0.0031144456644091895,
-    optimizer_idx=0,
-    activation='leaky_relu'
-)
+# obj.model = create_cnn_model(
+#     obj=obj,
+#     n_conv_layers=3,
+#     conv_filters=[23, 23, 23],
+#     kernel_sizes=[3, 3, 3],
+#     pool_sizes=[2, 2, 2],
+#     n_dense_layers=2,
+#     dense_units=[32, 32],
+#     dropout_rate=0.2,
+#     learning_rate=0.0031144456644091895,
+#     optimizer_idx=0,
+#     activation='leaky_relu'
+# )
 # GrayWolfOptimizer(obj,test='MLP', target_evaluations=obj.target_evaluations, pop_size=obj.pop_size)
 # execution_time = run_ga_optimization(obj, test='AUTOML')
 # evaluate_best_model(obj, test='AUTOML')
 # display_results(obj, execution_time, test='AUTOML', method='GA')
-
-obj .model = create_mlp_model(
-    obj=obj,
-    optimizer_idx=0,
-    activation='sigmoid',
-    dropout_rate=0.2,
-    learning_rate=0.0024082891265896104,
-    n_dense_layers=3,
-    dense_units=[128, 128, 128]
-)
-early_stop = EarlyStopping(
-    monitor='val_loss',
-    patience=10,
-    restore_best_weights=True,
-    verbose=1
-)
-
-history = obj.model.fit(
-    obj.X_train, obj.y_train,
-    validation_data=(obj.X_val, obj.y_val),
-    epochs=100,
-    batch_size=32,
-    callbacks=[early_stop],
-)
-test_model(obj)
+# execution_time = GrayWolfOptimizer(obj, test='AUTOML', target_evaluations=obj.target_evaluations, pop_size=obj.pop_size)
+# evaluate_best_model(obj, test='AUTOML')
+# display_results(obj, execution_time, test='AUTOML', method='GWO')
+execution_time = randomized_search_optimization(obj, testing_model='AUTOML', seed=SEED)
+evaluate_best_model(obj, test='AUTOML')
+display_results(obj, execution_time, test='AUTOML', method='RS')
+# obj .model = create_mlp_model(
+#     obj=obj,
+#     optimizer_idx=0,
+#     activation='sigmoid',
+#     dropout_rate=0.2,
+#     learning_rate=0.0024082891265896104,
+#     n_dense_layers=3,
+#     dense_units=[128, 128, 128]
+# )
+# early_stop = EarlyStopping(
+#     monitor='val_loss',
+#     patience=10,
+#     restore_best_weights=True,
+#     verbose=1
+# )
+# 
+# history = obj.model.fit(
+#     obj.X_train, obj.y_train,
+#     validation_data=(obj.X_val, obj.y_val),
+#     epochs=100,
+#     batch_size=32,
+#     callbacks=[early_stop],
+# )
+# test_model(obj)
 # ── run GA on ALL models, rank, chart & log ───────────────────────────────
 # compare_all_models(obj)
 

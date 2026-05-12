@@ -2,6 +2,7 @@ from mealpy.swarm_based import GWO
 import numpy as np
 import random
 import os
+import time
 from MLP import create_mlp_model
 from LSTM import create_lstm_model
 from CNN import create_cnn_model
@@ -12,6 +13,8 @@ from mealpy.utils.space import IntegerVar, FloatVar, CategoricalVar
 from tensorflow.keras.callbacks import EarlyStopping
 import tensorflow as tf
 import gc
+from eval import _build_automl_model, _get_training_and_validation_split
+from sklearn.metrics import f1_score
 
 
 def _set_global_seed(seed=None):
@@ -181,6 +184,27 @@ def _decode_solution(solution, test='MLP'):
     }
 
 
+def _decode_automl_solution(solution):
+    solution = np.array(solution, dtype=object).flatten()
+    return {
+        "model_type": int(_decode_choice(solution[0], [0, 1, 2, 3, 4])),
+        "learning_rate": float(_to_scalar(solution[1])),
+        "batch_size": int(_decode_choice(solution[2], [16, 32, 64, 128])),
+        "epochs": 100,
+        "neurons": int(round(float(_to_scalar(solution[4])))),
+        "filters": int(round(float(_to_scalar(solution[5])))),
+        "kernel_size": int(_decode_choice(solution[6], [3, 5, 7])),
+        "units": int(round(float(_to_scalar(solution[7])))),
+        "n_conv_layers": int(_decode_choice(solution[8], [1, 2, 3])),
+        "pool_size": int(_decode_choice(solution[9], [2, 4])),
+        "n_dense_layers": int(_decode_choice(solution[10], [1, 2, 3])),
+        "dense_units": int(_decode_choice(solution[11], [32, 64, 128, 256])),
+        "dropout_rate": float(_decode_choice(solution[12], [0.0, 0.1, 0.2, 0.3, 0.5])),
+        "optimizer": int(_decode_choice(solution[13], [0, 1, 2])),
+        "activation": _decode_choice(solution[14], ['relu', 'tanh', 'sigmoid', 'leaky_relu']),
+    }
+
+
 def _make_model(obj, decoded, test='MLP'):
     if test == 'MLP':
         return create_mlp_model(
@@ -288,8 +312,11 @@ def _format_best_individual(decoded, test='MLP'):
 
 def GrayWolfOptimizer(obj,test='MLP', target_evaluations=500, pop_size=15, seed=None):
     _set_global_seed(seed)
+    start_time = time.time() if 'time' in globals() else None
 
-    if test == 'LSTM' or test == 'RNN':
+    automl_mode = test in ('AUTOML', 'AUTO', 'ALL', 'UNIFIED')
+
+    if (test == 'LSTM' or test == 'RNN') and not automl_mode:
         obj.X_train = obj.X_train.reshape(obj.X_train.shape[0], 1, obj.X_train.shape[1])
         obj.X_val = obj.X_val.reshape(obj.X_val.shape[0], 1, obj.X_val.shape[1])
         obj.X_test = obj.X_test.reshape(obj.X_test.shape[0], 1, obj.X_test.shape[1])
@@ -313,28 +340,41 @@ def GrayWolfOptimizer(obj,test='MLP', target_evaluations=500, pop_size=15, seed=
     }
     eval_counter = {"n": 0}
 
+    if automl_mode and (not hasattr(obj, '_automl_best_by_model') or obj._automl_best_by_model is None):
+        obj._automl_best_by_model = {}
+
     def fitness(solution):
         eval_counter["n"] += 1
-        decoded = _decode_solution(solution, test=test)
-        batch_size = decoded["batch_size"]
-
         model = None
         history = None
-        x_train_fit, x_val_fit = obj.X_train, obj.X_val
-        val_acc = 0.0
+        val_score = 0.0
 
         try:
             # Clear old graph/tensors before building a new candidate model
             tf.keras.backend.clear_session()
 
-            model = _make_model(obj=obj, decoded=decoded, test=test)
+            if automl_mode:
+                cfg = _decode_automl_solution(solution)
+                if "optimizer" in cfg and "optimizer_idx" not in cfg:
+                    cfg["optimizer_idx"] = cfg["optimizer"]
 
-            if test in ['RNN', 'LSTM'] and len(obj.X_train.shape) == 2:
-                x_train_fit = obj.X_train.reshape((-1, 1, obj.n_features))
-                x_val_fit = obj.X_val.reshape((-1, 1, obj.n_features))
-            elif test == 'CNN' and len(obj.X_train.shape) == 2:
-                x_train_fit = obj.X_train.reshape((-1, obj.n_features, 1))
-                x_val_fit = obj.X_val.reshape((-1, obj.n_features, 1))
+                x_train_raw, x_val_raw, y_train_fit, y_val_fit = _get_training_and_validation_split(obj)
+                model, x_train_fit, x_val_fit = _build_automl_model(obj, cfg, X_train=x_train_raw, X_val=x_val_raw)
+                batch_size = int(cfg["batch_size"])
+            else:
+                decoded = _decode_solution(solution, test=test)
+                batch_size = decoded["batch_size"]
+                model = _make_model(obj=obj, decoded=decoded, test=test)
+
+                x_train_fit, x_val_fit = obj.X_train, obj.X_val
+                if test in ['RNN', 'LSTM'] and len(obj.X_train.shape) == 2:
+                    x_train_fit = obj.X_train.reshape((-1, 1, obj.n_features))
+                    x_val_fit = obj.X_val.reshape((-1, 1, obj.n_features))
+                elif test == 'CNN' and len(obj.X_train.shape) == 2:
+                    x_train_fit = obj.X_train.reshape((-1, obj.n_features, 1))
+                    x_val_fit = obj.X_val.reshape((-1, obj.n_features, 1))
+                y_train_fit = obj.y_train
+                y_val_fit = obj.y_val
 
             # --- Train with fixed epochs and early stopping ---
             early_stopping = EarlyStopping(
@@ -344,21 +384,37 @@ def GrayWolfOptimizer(obj,test='MLP', target_evaluations=500, pop_size=15, seed=
                     verbose=0
             )
 
+            epochs = int(getattr(obj, "fixed_epochs", 100))
             history = model.fit(
-                x_train_fit, obj.y_train,
-                validation_data=(x_val_fit, obj.y_val),
-                epochs=100,
+                x_train_fit, y_train_fit,
+                validation_data=(x_val_fit, y_val_fit),
+                epochs=epochs,
                 batch_size=int(batch_size),
                 callbacks=[early_stopping],
                 verbose=0
             )
+            if automl_mode:
+                y_pred = model.predict(x_val_fit, verbose=0, batch_size=1024)
+                if obj.n_classes == 2:
+                    y_pred_classes = (y_pred > 0.5).astype(int).flatten()
+                else:
+                    y_pred_classes = np.argmax(y_pred, axis=1)
+                val_score = float(f1_score(y_val_fit, y_pred_classes, average='weighted'))
 
-            # --- Fitness: maximize val_accuracy, GWO minimizes → return negative ---
-            val_acc = float(max(history.history.get('val_accuracy', [0.0])))
+                mtype = int(cfg["model_type"])
+                best_entry = obj._automl_best_by_model.get(mtype)
+                if best_entry is None or val_score > best_entry["fitness"]:
+                    obj._automl_best_by_model[mtype] = {
+                        "params": dict(cfg),
+                        "fitness": float(val_score),
+                    }
+            else:
+                # --- Fitness: maximize val_accuracy, GWO minimizes → return negative ---
+                val_score = float(max(history.history.get('val_accuracy', [0.0])))
         except Exception as e:
             # OOM or training failure: penalize candidate and continue optimization
             obj.gwo_last_error = str(e)
-            val_acc = 0.0
+            val_score = 0.0
         finally:
             # Aggressive cleanup to avoid memory accumulation across evaluations
             try:
@@ -372,18 +428,26 @@ def GrayWolfOptimizer(obj,test='MLP', target_evaluations=500, pop_size=15, seed=
             gc.collect()
             tf.keras.backend.clear_session()
 
-        obj.gwo_tested_solutions.append({
-            "evaluation": eval_counter["n"],
-            "params": decoded,
-            "val_accuracy": float(val_acc),
-            "fitness": float(-val_acc),
-        })
+        if automl_mode:
+            obj.gwo_tested_solutions.append({
+                "evaluation": eval_counter["n"],
+                "params": cfg,
+                "val_score": float(val_score),
+                "fitness": float(-val_score),
+            })
+        else:
+            obj.gwo_tested_solutions.append({
+                "evaluation": eval_counter["n"],
+                "params": decoded,
+                "val_accuracy": float(val_score),
+                "fitness": float(-val_score),
+            })
 
         # Print only best solution of each population chunk
         if eval_counter["n"] % pop_size == 0:
             pop_index = eval_counter["n"] // pop_size
             chunk = obj.gwo_tested_solutions[-pop_size:]
-            best_chunk = max(chunk, key=lambda x: x["val_accuracy"])
+            best_chunk = max(chunk, key=lambda x: x.get("val_score", x.get("val_accuracy", 0.0)))
             obj.gwo_population_bests.append({
                 "population": pop_index,
                 "evaluation_range": (eval_counter["n"] - pop_size + 1, eval_counter["n"]),
@@ -393,12 +457,34 @@ def GrayWolfOptimizer(obj,test='MLP', target_evaluations=500, pop_size=15, seed=
             p = best_chunk["params"]
             _print_section(f"🐺 Population {pop_index} Best")
             _print_kv("Eval range", f"{eval_counter['n'] - pop_size + 1}-{eval_counter['n']}")
-            _print_kv("Best val_acc", f"{best_chunk['val_accuracy']:.4f}")
+            _print_kv("Best score", f"{best_chunk.get('val_score', best_chunk.get('val_accuracy', 0.0)):.4f}")
             for key, value in p.items():
                 _print_kv(key, value)
 
-        return -val_acc
-    if test == 'MLP':
+        return -val_score
+    if automl_mode:
+        problem = Problem(
+            obj_func=fitness,
+            bounds=[
+                IntegerVar(0, 4),
+                FloatVar(1e-5, 1e-2),
+                CategoricalVar([16, 32, 64, 128]),
+                IntegerVar(100, 100),
+                IntegerVar(16, 512),
+                IntegerVar(16, 256),
+                CategoricalVar([3, 5, 7]),
+                IntegerVar(16, 512),
+                CategoricalVar([1, 2, 3]),
+                CategoricalVar([2, 4]),
+                CategoricalVar([1, 2, 3]),
+                CategoricalVar([32, 64, 128, 256]),
+                CategoricalVar([0.0, 0.1, 0.2, 0.3, 0.5]),
+                CategoricalVar([0, 1, 2]),
+                CategoricalVar(['relu', 'tanh', 'sigmoid', 'leaky_relu']),
+            ],
+            minmax="min"
+        )
+    elif test == 'MLP':
         problem = Problem(
             obj_func=fitness,
             bounds=[
@@ -540,11 +626,36 @@ def GrayWolfOptimizer(obj,test='MLP', target_evaluations=500, pop_size=15, seed=
         else:
             raise TypeError("Unable to read optimization result from mealpy solve().")
 
-    # Save best hyperparameters to obj (compatible with print_resault.decode_individual)
-    decoded_best = _decode_solution(best_pos, test=test)
-    obj.best_individual = _format_best_individual(decoded_best, test=test)
-    obj.best_params = {"model": test, **decoded_best}
-    obj.best_fitness = float(-best_fit)
+    if automl_mode:
+        decoded_best = _decode_automl_solution(best_pos)
+        if "optimizer" in decoded_best and "optimizer_idx" not in decoded_best:
+            decoded_best["optimizer_idx"] = decoded_best["optimizer"]
+
+        obj.best_individual = None
+        obj.best_params = dict(decoded_best)
+        obj.best_model_params = dict(decoded_best)
+        obj.best_by_model = getattr(obj, "_automl_best_by_model", {})
+        obj.best_fitness = float(-best_fit)
+
+        per_model = []
+        for model_type, entry in getattr(obj, '_automl_best_by_model', {}).items():
+            params = entry.get('params', {})
+            per_model.append({
+                "model_type": int(model_type),
+                "params": params,
+                "fitness": float(entry.get('fitness', 0.0)),
+            })
+        per_model_sorted = sorted(per_model, key=lambda x: x['fitness'], reverse=True)
+        obj.top_k_results = [
+            {"rank": idx + 1, "fitness": item["fitness"], "params": item["params"]}
+            for idx, item in enumerate(per_model_sorted[:5])
+        ]
+    else:
+        # Save best hyperparameters to obj (compatible with print_resault.decode_individual)
+        decoded_best = _decode_solution(best_pos, test=test)
+        obj.best_individual = _format_best_individual(decoded_best, test=test)
+        obj.best_params = {"model": test, **decoded_best}
+        obj.best_fitness = float(-best_fit)
 
     # Save alpha / beta / delta wolves from final population if available
     obj.gwo_alpha = {
@@ -589,3 +700,7 @@ def GrayWolfOptimizer(obj,test='MLP', target_evaluations=500, pop_size=15, seed=
     # Final training + test evaluation should be run separately with evaluate_best_model(...)
     obj.best_metrics = {}
     obj.model = None
+
+    if start_time is not None:
+        return time.time() - start_time
+    return None

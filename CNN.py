@@ -3,7 +3,7 @@
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Dropout, BatchNormalization
 from tensorflow.keras.optimizers import Adam, RMSprop, SGD
-from tensorflow.keras.layers import Dense, Conv1D, MaxPooling1D, Flatten, Dropout, BatchNormalization
+from tensorflow.keras.layers import Input, Dense, Conv1D, MaxPooling1D, Flatten, Dropout, BatchNormalization
 
 def get_cnn_param():
     param = {
@@ -41,16 +41,15 @@ def create_cnn_model(obj, n_conv_layers=2, conv_filters=[32, 64], kernel_sizes=[
         # batch_size_idx = individual[17]  # Index du batch size (nouveau)# Mappage des index aux valeurs réelles
         
         model = Sequential()
+        model.add(Input(shape=(obj.n_features, 1)))
         
         # Couches convolutionnelles (seulement le nombre utilisé)
         for i in range(n_conv_layers):
-            # Première couche avec input_shape
             if i == 0:
                 model.add(Conv1D(
                     filters=conv_filters[i],
                     kernel_size=kernel_sizes[i],
                     activation=activation,
-                    input_shape=(obj.n_features, 1),
                     padding='same'
                 ))
             # Couches suivantes

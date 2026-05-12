@@ -1,6 +1,6 @@
 import numpy as np
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Dropout, BatchNormalization
+from tensorflow.keras.layers import Input, Dense, Dropout, BatchNormalization
 from tensorflow.keras.optimizers import Adam, RMSprop, SGD
 from tensorflow.keras.layers import Dense, Conv1D, MaxPooling1D, Flatten, Dropout, BatchNormalization
 
@@ -34,12 +34,12 @@ def create_dnn_model(obj, n_hidden_layers=2, hidden_units=[64, 128], dropout_rat
     # Mappage des index aux valeurs réelles
     
     model = Sequential()
+    model.add(Input(shape=(obj.n_features,)))
     
-    # Première couche avec input_shape
+    # Première couche
     model.add(Dense(
         units=hidden_units[0],
-        activation=activation,
-        input_shape=(obj.n_features,)
+        activation=activation
     ))
     model.add(BatchNormalization())
     model.add(Dropout(dropout_rate))
@@ -76,6 +76,5 @@ def create_dnn_model(obj, n_hidden_layers=2, hidden_units=[64, 128], dropout_rat
 
 
     
-
 
 

@@ -48,18 +48,18 @@ def load_data(obj, idx=None):
     if idx == '1' :
         df = _normalize_columns(_read_excel_safe(obj.data_path))
         target_col = _resolve_target_column(df, 'Class')
-        encodes =  ['EntryPoint', 'PEType', 'magic_number', 'bytes_on_last_page', 'pages_in_file', 'relocations', 'size_of_header', 'min_extra_paragraphs', 'max_extra_paragraphs', 'init_ss_value', 'init_sp_value', 'init_ip_value', 'init_cs_value', 'over_lay_number', 'oem_identifier', 'address_of_ne_header', 'Magic', 'SizeOfCode', 'SizeOfInitializedData', 'SizeOfUninitializedData', 'AddressOfEntryPoint', 'BaseOfCode', 'BaseOfData', 'ImageBase', 'SectionAlignment', 'FileAlignment', 'OperatingSystemVersion', 'ImageVersion', 'SizeOfImage', 'SizeOfHeaders', 'Checksum', 'Subsystem', 'SizeofStackReserve', 'SizeofStackCommit', 'SizeofHeapCommit', 'SizeofHeapReserve', 'LoaderFlags', 'text_VirtualSize', 'text_VirtualAddress', 'text_SizeOfRawData', 'text_PointerToRawData', 'text_PointerToRelocations', 'text_PointerToLineNumbers', 'rdata_VirtualSize', 'rdata_VirtualAddress', 'rdata_SizeOfRawData', 'rdata_PointerToRawData', 'rdata_PointerToRelocations', 'rdata_PointerToLineNumbers', 'rdata_Characteristics']
-        drops = ['md5', 'sha1', 'file_extension', 'MachineType', 'DllCharacteristics', 'text_Characteristics', 'Category', 'Family', ]
+        encodes =  ['md5', 'sha1', 'file_extension', 'MachineType', 'DllCharacteristics', 'text_Characteristics','EntryPoint', 'PEType', 'magic_number', 'bytes_on_last_page', 'pages_in_file', 'relocations', 'size_of_header', 'min_extra_paragraphs', 'max_extra_paragraphs', 'init_ss_value', 'init_sp_value', 'init_ip_value', 'init_cs_value', 'over_lay_number', 'oem_identifier', 'address_of_ne_header', 'Magic', 'SizeOfCode', 'SizeOfInitializedData', 'SizeOfUninitializedData', 'AddressOfEntryPoint', 'BaseOfCode', 'BaseOfData', 'ImageBase', 'SectionAlignment', 'FileAlignment', 'OperatingSystemVersion', 'ImageVersion', 'SizeOfImage', 'SizeOfHeaders', 'Checksum', 'Subsystem', 'SizeofStackReserve', 'SizeofStackCommit', 'SizeofHeapCommit', 'SizeofHeapReserve', 'LoaderFlags', 'text_VirtualSize', 'text_VirtualAddress', 'text_SizeOfRawData', 'text_PointerToRawData', 'text_PointerToRelocations', 'text_PointerToLineNumbers', 'rdata_VirtualSize', 'rdata_VirtualAddress', 'rdata_SizeOfRawData', 'rdata_PointerToRawData', 'rdata_PointerToRelocations', 'rdata_PointerToLineNumbers', 'rdata_Characteristics']
+        drops =['Category', 'Family']
     elif idx == '2' :
         df = _normalize_columns(_read_excel_safe(obj.data_path))
         target_col = _resolve_target_column(df, 'Benign')
-        encodes = []
-        drops = ['FileName', 'md5Hash']
+        encodes = ['FileName', 'md5Hash']
+        drops = []
     elif idx == '3' :
         df = pd.read_csv(obj.data_path)
         target_col = 'GR'
-        encodes = []
-        drops = ['ID','filename']
+        encodes = ['ID','filename']
+        drops = []
     elif idx == '4':
         # RISS dataset — no header row, last column is the target label
         df = pd.read_csv(obj.data_path, header=None)
@@ -116,6 +116,13 @@ def load_data(obj, idx=None):
     for drop in drops:
         if drop in X.columns:
             X = X.drop(columns=[drop])
+    # Ensure all remaining features are numeric before scaling.
+    non_numeric_cols = X.select_dtypes(include=['object', 'string']).columns
+    if len(non_numeric_cols) > 0:
+        print(f"Auto-encoding non-numeric features: {list(non_numeric_cols)}")
+        for col in non_numeric_cols:
+            le_target = LabelEncoder()
+            X[col] = le_target.fit_transform(X[col].astype(str))
     # for col in columns:
     #     if X[col].apply(is_hex).all():
     #         # Convert entire column to numeric
@@ -142,29 +149,24 @@ def load_data(obj, idx=None):
     obj.X_train_val = np.asarray(X_train_val)
     obj.y_train_val = np.asarray(y_train_val).astype(int)
 
-    # Fit preprocessing on the full training pool only (never on test).
     obj.X_train_val = obj.scaler.fit_transform(obj.X_train_val)
     obj.X_test = obj.scaler.transform(obj.X_test)
-    obj.X_train_val = obj.smootheringScaler.fit_transform(obj.X_train_val)
-    obj.X_test = obj.smootheringScaler.transform(obj.X_test)
 
-    # ── Feature selection for RISS (16 380 features → manageable subset) ────────
-    # Without this the model has ~1 M params for 1 067 samples → extreme overfit.
-    if idx == '4':
-        # 1. Remove constant / near-constant features
-        vt = VarianceThreshold(threshold=0.0)
-        obj.X_train_val = vt.fit_transform(obj.X_train_val)
-        obj.X_test = vt.transform(obj.X_test)
-        print(f"After VarianceThreshold: {obj.X_train_val.shape[1]} features remaining")
-
-        # 2. Keep top-500 features ranked by ANOVA F-score (fit on train only)
-        K = min(500, obj.X_train_val.shape[1])
-        selector = SelectKBest(f_classif, k=K)
-        obj.X_train_val = selector.fit_transform(obj.X_train_val, obj.y_train_val)
-        obj.X_test = selector.transform(obj.X_test)
-        obj.feature_selector = selector          # store for later use
-        print(f"After SelectKBest(k={K}): {obj.X_train_val.shape[1]} features")
-
+    # ── Simple feature selection for all datasets ──────────────────────────────
+    # Keep a manageable subset of the most relevant features.
+    # vt = VarianceThreshold(threshold=0.0)
+    # obj.X_train_val = vt.fit_transform(obj.X_train_val)
+    # obj.X_test = vt.transform(obj.X_test)
+    # print(f"After VarianceThreshold: {obj.X_train_val.shape[1]} features remaining")
+# 
+    # # Keep top-k features ranked by ANOVA F-score (fit on train only).
+    # K = min(500, obj.X_train_val.shape[1])
+    # selector = SelectKBest(f_classif, k=K)
+    # obj.X_train_val = selector.fit_transform(obj.X_train_val, obj.y_train_val)
+    # obj.X_test = selector.transform(obj.X_test)
+    # obj.feature_selector = selector          # store for later use
+    # print(f"After SelectKBest(k={K}): {obj.X_train_val.shape[1]} features")
+    # print(f"Final feature count: {obj.X_train_val.shape[1]}")
     # CV setup on the 80% training pool (default: 5 folds => 80/20 train/val per fold).
     cv_folds = max(1, int(getattr(obj, 'cv_folds', 5)))
     obj.use_cv = bool(getattr(obj, 'use_cv', True) and cv_folds > 1)

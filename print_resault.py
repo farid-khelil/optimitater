@@ -84,7 +84,16 @@ def _decode_best_params(individual, test='MLP'):
 
 def _relevant_automl_params(params):
         """Keep only relevant fields for the selected model architecture."""
-        model_name = params.get('model_name', 'UNKNOWN')
+        model_name = params.get('model_name')
+        if not model_name:
+                model_type = params.get('model_type')
+                model_name = {
+                        0: 'MLP',
+                        1: 'CNN',
+                        2: 'LSTM',
+                        3: 'RNN',
+                        4: 'DNN'
+                }.get(model_type, 'UNKNOWN')
         out = {
                 'model_type': params.get('model_type'),
                 'model_name': model_name,
@@ -198,6 +207,13 @@ def display_results(self, execution_time,test='MLP',method='GA'):
                         print(f"   • Precision: {self.best_metrics.get('precision', 0.0):.4f}")
                         print(f"   • Recall: {self.best_metrics.get('recall', 0.0):.4f}")
                         print(f"   • F1-Score: {self.best_metrics.get('f1_score', 0.0):.4f}")
+
+                if hasattr(self, 'best_params') and self.best_params:
+                        print("\n✅ BEST PARAMS (RAW):")
+                        print(f"   {self.best_params}")
+
+                if hasattr(self, 'best_model_params') and self.best_model_params:
+                        self.best_params = self.best_model_params
 
                 print("="*80)
                 return
